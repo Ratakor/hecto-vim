@@ -559,12 +559,17 @@ impl Editor {
             }
             Command::Edit(Edit::InsertNewline) => {
                 let command_str = self.command_bar.value();
+                self.command_bar.add_to_history(command_str.clone());
                 self.handle_vim_command(&command_str);
                 if !self.should_quit {
                     self.set_prompt(PromptType::None);
                 }
             }
             Command::Edit(edit_command) => self.command_bar.handle_edit_command(edit_command),
+            Command::Move(Move::Up) => self.command_bar.navigate_history_up(),
+            Command::Move(Move::Down) => self.command_bar.navigate_history_down(),
+            Command::Move(Move::Left) => self.command_bar.move_caret_left(),
+            Command::Move(Move::Right) => self.command_bar.move_caret_right(),
             _ => {}
         }
     }
