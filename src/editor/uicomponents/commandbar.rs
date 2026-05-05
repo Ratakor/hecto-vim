@@ -22,15 +22,15 @@ impl CommandBar {
         }
         self.set_needs_redraw(true);
     }
+    pub fn value(&self) -> String {
+        self.value.to_string()
+    }
     pub fn caret_position_col(&self) -> ColIdx {
         let max_width = self
             .prompt
             .len()
             .saturating_add(self.value.grapheme_count());
         min(max_width, self.size.width)
-    }
-    pub fn value(&self) -> String {
-        self.value.to_string()
     }
     pub fn set_prompt(&mut self, prompt: &str) {
         self.prompt = prompt.to_string();

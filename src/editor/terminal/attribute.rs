@@ -8,6 +8,7 @@ pub struct Attribute {
 }
 
 impl From<AnnotationType> for Attribute {
+    #[allow(clippy::too_many_lines)]
     fn from(annotation_type: AnnotationType) -> Self {
         match annotation_type {
             AnnotationType::Match => Self {

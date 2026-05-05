@@ -20,10 +20,9 @@ impl<'a> Iterator for AnnotatedStringIterator<'a> {
             .annotated_string
             .annotations
             .iter()
-            .filter(|annotation| {
+            .rfind(|annotation| {
                 annotation.start <= self.current_idx && annotation.end > self.current_idx
             })
-            .last()
         {
             let end_idx = min(annotation.end, self.annotated_string.string.len());
             let start_idx = self.current_idx;

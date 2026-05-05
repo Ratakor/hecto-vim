@@ -56,10 +56,7 @@ impl Buffer {
 
     pub fn load(file_name: &str) -> Result<Self, Error> {
         let contents = read_to_string(file_name)?;
-        let mut lines = Vec::new();
-        for value in contents.lines() {
-            lines.push(Line::from(value));
-        }
+        let lines = contents.lines().map(Line::from).collect();
         Ok(Self {
             lines,
             file_info: FileInfo::from(file_name),

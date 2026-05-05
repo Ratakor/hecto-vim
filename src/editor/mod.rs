@@ -301,17 +301,11 @@ impl Editor {
     }
 
     fn process_command_no_prompt(&mut self, command: Command) {
-        if matches!(command, Command::System(System::Quit)) {
-            self.handle_quit_command();
-            return;
-        }
         self.reset_quit_times(); // Reset quit times for all other commands
 
         match command {
-            Command::System(System::Quit | System::Resize(_)) => {} // Quit and Resize already handled above, others not applicable
+            Command::System(System::Resize(_)) => {}
             Command::System(System::Dismiss) => self.update_message(""),
-            Command::System(System::Search) => self.set_prompt(PromptType::Search),
-            Command::System(System::Save) => self.handle_save_command(),
             Command::Edit(edit_command) => self.view.handle_edit_command(edit_command),
             Command::Move(move_command) => self.view.handle_move_command(move_command),
         }
@@ -403,7 +397,7 @@ impl Editor {
     }
     fn process_command_during_save(&mut self, command: Command) {
         match command {
-            Command::System(System::Quit | System::Resize(_) | System::Search | System::Save) | Command::Move(_) => {} // Not applicable during save, Resize already handled at this stage
+            Command::System(System::Resize(_)) | Command::Move(_) => {} // Not applicable during save, Resize already handled at this stage
             Command::System(System::Dismiss) => {
                 self.set_prompt(PromptType::None);
                 self.update_message("Save aborted.");
@@ -449,7 +443,7 @@ impl Editor {
             }
             Command::Move(Move::Right | Move::Down) => self.view.search_next(),
             Command::Move(Move::Up | Move::Left) => self.view.search_prev(),
-            Command::System(System::Quit | System::Resize(_) | System::Search | System::Save) | Command::Move(_) => {} // Not applicable during save, Resize already handled at this stage
+            Command::System(System::Resize(_)) | Command::Move(_) => {} // Not applicable during search, Resize already handled at this stage
         }
     }
     // endregion

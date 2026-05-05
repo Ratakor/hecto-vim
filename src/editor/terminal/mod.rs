@@ -104,23 +104,17 @@ impl Terminal {
         Self::print_row_at(row, 0, line_text)
     }
     pub fn print_row_at(row: RowIdx, col: ColIdx, line_text: &str) -> Result<(), Error> {
-        Self::move_caret_to(Position { row, col })?;
+        Self::move_caret_to(Position { col, row })?;
         Self::clear_line()?;
         Self::print(line_text)?;
         Ok(())
-    }
-    pub fn print_annotated_row(
-        row: RowIdx,
-        annotated_string: &AnnotatedString,
-    ) -> Result<(), Error> {
-        Self::print_annotated_row_at(row, 0, annotated_string)
     }
     pub fn print_annotated_row_at(
         row: RowIdx,
         col: ColIdx,
         annotated_string: &AnnotatedString,
     ) -> Result<(), Error> {
-        Self::move_caret_to(Position { row, col })?;
+        Self::move_caret_to(Position { col, row })?;
         Self::clear_line()?;
         annotated_string
             .into_iter()

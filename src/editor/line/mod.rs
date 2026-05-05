@@ -301,7 +301,7 @@ impl Line {
                     relative_start_idx.saturating_add(start) //convert their relative indices to absolute indices
                 })
                 .collect();
-            self.match_graphme_clusters(&potential_matches, query) //convert the potential matches into matches which align with the grapheme boundaries.
+            self.match_grapheme_clusters(&potential_matches, query) //convert the potential matches into matches which align with the grapheme boundaries.
         })
     }
 
@@ -311,7 +311,7 @@ impl Line {
     // - matches: A vector of byte indices of potential matches, which might or might not align with the grapheme clusters.
     // Returns:
     // A Vec of (byte_index, grapheme_idx) pairs for each match that alignes with the grapheme clusters, where byte_index is the byte index of the match, and grapheme_idx is the grapheme index of the match.
-    fn match_graphme_clusters(
+    fn match_grapheme_clusters(
         &self,
         matches: &[ByteIdx],
         query: &str,

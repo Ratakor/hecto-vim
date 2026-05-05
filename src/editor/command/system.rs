@@ -6,11 +6,8 @@ use crossterm::event::{
 
 #[derive(Clone, Copy)]
 pub enum System {
-    Save,
     Resize(Size),
-    Quit,
     Dismiss,
-    Search,
 }
 
 impl TryFrom<KeyEvent> for System {

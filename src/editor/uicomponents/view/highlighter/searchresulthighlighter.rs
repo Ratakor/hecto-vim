@@ -48,7 +48,7 @@ impl<'a> SearchResultHighlighter<'a> {
     }
 }
 
-impl<'a> SyntaxHighlighter for SearchResultHighlighter<'a> {
+impl SyntaxHighlighter for SearchResultHighlighter<'_> {
     fn highlight(&mut self, idx: LineIdx, line: &Line) {
         let mut result = Vec::new();
         self.highlight_matched_words(line, &mut result);
