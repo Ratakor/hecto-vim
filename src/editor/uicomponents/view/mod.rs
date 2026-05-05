@@ -167,6 +167,16 @@ impl View {
         self.scroll_text_location_into_view();
     }
 
+    pub fn move_to_position(&mut self, position: Position) {
+        let col = position.col.saturating_add(self.scroll_offset.col);
+        let row = position.row.saturating_add(self.scroll_offset.row);
+        self.text_location.line_idx = row;
+        self.snap_to_valid_line();
+        self.text_location.grapheme_idx = self.buffer.grapheme_at_width(self.text_location.line_idx, col);
+        self.snap_to_valid_grapheme();
+        self.scroll_text_location_into_view();
+    }
+
     // endregion
     // region: Text editing
     fn insert_newline(&mut self) {

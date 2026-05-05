@@ -31,6 +31,11 @@ impl Buffer {
             .get(idx)
             .map_or(0, |line| line.width_until(until))
     }
+    pub fn grapheme_at_width(&self, idx: LineIdx, width: ColIdx) -> GraphemeIdx {
+        self.lines
+            .get(idx)
+            .map_or(0, |line| line.grapheme_at_width(width))
+    }
 
     pub fn get_highlighted_substring(
         &self,

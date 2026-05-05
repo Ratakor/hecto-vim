@@ -176,6 +176,18 @@ impl Line {
     pub fn width(&self) -> ColIdx {
         self.width_until(self.grapheme_count())
     }
+
+    pub fn grapheme_at_width(&self, width: ColIdx) -> GraphemeIdx {
+        let mut current_width: ColIdx = 0;
+        for (idx, fragment) in self.fragments.iter().enumerate() {
+            let fragment_width: usize = fragment.rendered_width.into();
+            if current_width.saturating_add(fragment_width) > width {
+                return idx;
+            }
+            current_width = current_width.saturating_add(fragment_width);
+        }
+        self.grapheme_count()
+    }
     // Inserts a character into the line, or appends it at the end if at == grapheme_count + 1
     pub fn insert_char(&mut self, character: char, at: GraphemeIdx) {
         debug_assert!(at.saturating_sub(1) <= self.grapheme_count());

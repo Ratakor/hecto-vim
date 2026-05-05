@@ -6,6 +6,7 @@ use crossterm::style::{
     Attribute::{Reset, Reverse},
     Print, ResetColor, SetBackgroundColor, SetForegroundColor,
 };
+use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
 use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, size, Clear, ClearType, DisableLineWrap, EnableLineWrap,
     EnterAlternateScreen, LeaveAlternateScreen, SetTitle,
@@ -27,6 +28,7 @@ impl Terminal {
     pub fn terminate() -> Result<(), Error> {
         Self::leave_alternate_screen()?;
         Self::enable_line_wrap()?;
+        Self::disable_mouse_capture()?;
         Self::show_caret()?;
         Self::execute()?;
         disable_raw_mode()?;
@@ -36,8 +38,17 @@ impl Terminal {
         enable_raw_mode()?;
         Self::enter_alternate_screen()?;
         Self::disable_line_wrap()?;
+        Self::enable_mouse_capture()?;
         Self::clear_screen()?;
         Self::execute()?;
+        Ok(())
+    }
+    pub fn enable_mouse_capture() -> Result<(), Error> {
+        Self::queue_command(EnableMouseCapture)?;
+        Ok(())
+    }
+    pub fn disable_mouse_capture() -> Result<(), Error> {
+        Self::queue_command(DisableMouseCapture)?;
         Ok(())
     }
     pub fn clear_screen() -> Result<(), Error> {

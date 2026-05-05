@@ -1,5 +1,8 @@
 use crate::prelude::*;
-use crossterm::event::{read, Event, KeyEvent, KeyEventKind};
+use crossterm::event::{
+    read, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEvent,
+    MouseEventKind,
+};
 use std::{
     env,
     io::Error,
@@ -168,6 +171,7 @@ impl Editor {
         let should_process = match &event {
             Event::Key(KeyEvent { kind, .. }) => kind == &KeyEventKind::Press,
             Event::Resize(_, _) => true,
+            Event::Mouse(_) => true,
             _ => false,
         };
 
@@ -183,31 +187,36 @@ impl Editor {
             return;
         }
 
+        if let Event::Mouse(mouse_event) = event {
+            self.handle_mouse_event(mouse_event);
+            return;
+        }
+
         if let Event::Key(key_event) = event {
             if !self.in_prompt() {
                 match self.mode {
                     EditorMode::Normal => {
                         match (key_event.code, key_event.modifiers) {
-                            (crossterm::event::KeyCode::Char('i'), crossterm::event::KeyModifiers::NONE) => {
+                            (KeyCode::Char('i'), KeyModifiers::NONE) => {
                                 self.mode = EditorMode::Insert;
                                 self.update_message("-- INSERT --");
                             }
-                            (crossterm::event::KeyCode::Char(':'), crossterm::event::KeyModifiers::NONE) => {
+                            (KeyCode::Char(':'), KeyModifiers::NONE) => {
                                 self.set_prompt(PromptType::Command);
                             }
-                            (crossterm::event::KeyCode::Char('/'), crossterm::event::KeyModifiers::NONE) => {
+                            (KeyCode::Char('/'), KeyModifiers::NONE) => {
                                 self.set_prompt(PromptType::Search);
                             }
-                            (crossterm::event::KeyCode::Char('h'), crossterm::event::KeyModifiers::NONE) => {
+                            (KeyCode::Char('h'), KeyModifiers::NONE) => {
                                 self.process_command(Command::Move(Move::Left));
                             }
-                            (crossterm::event::KeyCode::Char('j'), crossterm::event::KeyModifiers::NONE) => {
+                            (KeyCode::Char('j'), KeyModifiers::NONE) => {
                                 self.process_command(Command::Move(Move::Down));
                             }
-                            (crossterm::event::KeyCode::Char('k'), crossterm::event::KeyModifiers::NONE) => {
+                            (KeyCode::Char('k'), KeyModifiers::NONE) => {
                                 self.process_command(Command::Move(Move::Up));
                             }
-                            (crossterm::event::KeyCode::Char('l'), crossterm::event::KeyModifiers::NONE) => {
+                            (KeyCode::Char('l'), KeyModifiers::NONE) => {
                                 self.process_command(Command::Move(Move::Right));
                             }
                             _ => {
@@ -219,7 +228,7 @@ impl Editor {
                         return;
                     }
                     EditorMode::Insert => {
-                        if key_event.code == crossterm::event::KeyCode::Esc {
+                        if key_event.code == KeyCode::Esc {
                             self.mode = EditorMode::Normal;
                             self.update_message("");
                             return;
@@ -230,6 +239,30 @@ impl Editor {
             if let Ok(command) = Command::try_from(event) {
                 self.process_command(command);
             }
+        }
+    }
+
+    fn handle_mouse_event(&mut self, event: MouseEvent) {
+        let MouseEvent {
+            kind, column, row, ..
+        } = event;
+        let mouse_pos = Position {
+            col: column as usize,
+            row: row as usize,
+        };
+        match kind {
+            MouseEventKind::Down(MouseButton::Left) => {
+                if mouse_pos.row < self.terminal_size.height.saturating_sub(2) {
+                    self.view.move_to_position(mouse_pos);
+                }
+            }
+            MouseEventKind::ScrollUp => {
+                self.view.handle_move_command(Move::Up);
+            }
+            MouseEventKind::ScrollDown => {
+                self.view.handle_move_command(Move::Down);
+            }
+            _ => {}
         }
     }
     // endregion
