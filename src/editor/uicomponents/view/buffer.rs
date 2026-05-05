@@ -13,6 +13,8 @@ pub struct Buffer {
     lines: Vec<Line>,
     file_info: FileInfo,
     dirty: bool,
+    undo_stack: Vec<Vec<Line>>,
+    redo_stack: Vec<Vec<Line>>,
 }
 
 impl Buffer {
@@ -21,6 +23,31 @@ impl Buffer {
     }
     pub const fn get_file_info(&self) -> &FileInfo {
         &self.file_info
+    }
+
+    fn push_undo(&mut self) {
+        self.undo_stack.push(self.lines.clone());
+        self.redo_stack.clear();
+    }
+
+    pub fn undo(&mut self) -> bool {
+        if let Some(lines) = self.undo_stack.pop() {
+            self.redo_stack.push(self.lines.clone());
+            self.lines = lines;
+            self.dirty = true;
+            return true;
+        }
+        false
+    }
+
+    pub fn redo(&mut self) -> bool {
+        if let Some(lines) = self.redo_stack.pop() {
+            self.undo_stack.push(self.lines.clone());
+            self.lines = lines;
+            self.dirty = true;
+            return true;
+        }
+        false
     }
 
     pub fn grapheme_count(&self, idx: LineIdx) -> GraphemeIdx {
@@ -66,6 +93,8 @@ impl Buffer {
             lines,
             file_info: FileInfo::from(file_name),
             dirty: false,
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
         })
     }
 
@@ -180,6 +209,7 @@ impl Buffer {
         self.lines.len()
     }
     pub fn insert_char(&mut self, character: char, at: Location) {
+        self.push_undo();
         debug_assert!(at.line_idx <= self.height());
         if at.line_idx == self.height() {
             self.lines.push(Line::from(&character.to_string()));
@@ -190,6 +220,7 @@ impl Buffer {
         }
     }
     pub fn delete(&mut self, at: Location) {
+        self.push_undo();
         if let Some(line) = self.lines.get(at.line_idx) {
             if at.grapheme_idx >= line.grapheme_count()
                 && self.height() > at.line_idx.saturating_add(1)
@@ -205,9 +236,14 @@ impl Buffer {
                 self.lines[at.line_idx].delete(at.grapheme_idx);
                 self.dirty = true;
             }
+        } else {
+            // Undo was pushed but no line was found. We should pop it back to keep redo stack clean if we want but for now just leave it.
+            // Actually, if we pushed undo and nothing happened, we might want to pop it.
+            self.undo_stack.pop();
         }
     }
     pub fn insert_newline(&mut self, at: Location) {
+        self.push_undo();
         if at.line_idx == self.height() {
             self.lines.push(Line::default());
             self.dirty = true;

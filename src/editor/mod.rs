@@ -99,7 +99,6 @@ impl Editor {
         editor.move_left_on_escape = false;
         let size = Terminal::size().unwrap_or_default();
         editor.handle_resize_command(size);
-        editor.update_message("HELP: i = insert | :w = save | :q = quit | / = search");
 
         let args: Vec<String> = env::args().collect();
         if let Some(file_name) = args.get(1) {
@@ -266,8 +265,14 @@ impl Editor {
                             (KeyCode::Char('l'), KeyModifiers::NONE) => {
                                 self.process_command(Command::Move(Move::Right));
                             }
-                            (KeyCode::Char('x'), KeyModifiers::NONE) => {
+                            (KeyCode::Char('d'), KeyModifiers::NONE) => {
                                 self.process_command(Command::Edit(Edit::Delete));
+                            }
+                            (KeyCode::Char('u'), KeyModifiers::NONE) => {
+                                self.process_command(Command::Edit(Edit::Undo));
+                            }
+                            (KeyCode::Char('U'), KeyModifiers::SHIFT) | (KeyCode::Char('U'), KeyModifiers::NONE) => {
+                                self.process_command(Command::Edit(Edit::Redo));
                             }
                             (KeyCode::Char('u'), KeyModifiers::CONTROL) => {
                                 self.process_command(Command::Move(Move::HalfPageUp));

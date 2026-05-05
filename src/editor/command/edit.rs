@@ -8,6 +8,8 @@ pub enum Edit {
     InsertNewline,
     Delete,
     DeleteBackward,
+    Undo,
+    Redo,
 }
 impl TryFrom<KeyEvent> for Edit {
     type Error = String;

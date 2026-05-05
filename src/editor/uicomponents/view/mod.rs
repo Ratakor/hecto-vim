@@ -159,6 +159,20 @@ impl View {
             Edit::Delete => self.delete(),
             Edit::DeleteBackward => self.delete_backward(),
             Edit::InsertNewline => self.insert_newline(),
+            Edit::Undo => {
+                if self.buffer.undo() {
+                    self.snap_to_valid_line();
+                    self.snap_to_valid_grapheme();
+                    self.set_needs_redraw(true);
+                }
+            }
+            Edit::Redo => {
+                if self.buffer.redo() {
+                    self.snap_to_valid_line();
+                    self.snap_to_valid_grapheme();
+                    self.set_needs_redraw(true);
+                }
+            }
         }
         self.update_syntax_highlighter();
     }
