@@ -221,7 +221,9 @@ impl Editor {
                             }
                             _ => {
                                 if let Ok(command) = Command::try_from(event) {
-                                    self.process_command(command);
+                                    if !matches!(command, Command::Edit(_)) {
+                                        self.process_command(command);
+                                    }
                                 }
                             }
                         }
