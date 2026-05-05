@@ -34,6 +34,7 @@ impl View {
         DocumentStatus {
             total_lines: self.buffer.height(),
             current_line_idx: self.text_location.line_idx,
+            current_col_idx: self.text_location_to_position().col,
             file_name: format!("{file_info}"),
             is_modified: self.buffer.is_dirty(),
             file_type: file_info.get_file_type(),
