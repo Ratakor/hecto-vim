@@ -5,10 +5,18 @@ use crossterm::event::{
 
 #[derive(Clone, Copy)]
 pub enum Move {
+    HalfPageUp,
+    HalfPageDown,
     PageUp,
     PageDown,
+    ViewTop,
+    ViewBottom,
+    ViewCenter,
     StartOfLine,
+    FirstNonWhitespace,
     EndOfLine,
+    BufferStart,
+    BufferEnd,
     Up,
     Left,
     Right,

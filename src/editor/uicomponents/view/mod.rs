@@ -3,10 +3,8 @@ use std::{cmp::min, io::Error};
 use crate::editor::RowIdx;
 use crate::prelude::*;
 
-use super::super::{
-    command::{Edit, Move},
-    DocumentStatus, Line, Terminal,
-};
+use crate::editor::{DocumentStatus, Line, Terminal};
+use crate::editor::command::{Edit, Move};
 use super::UIComponent;
 mod buffer;
 use buffer::Buffer;
@@ -31,7 +29,7 @@ pub struct View {
 }
 
 impl View {
-    pub fn get_status(&self) -> DocumentStatus {
+    pub fn get_status(&self, mode: String) -> DocumentStatus {
         let file_info = self.buffer.get_file_info();
         DocumentStatus {
             total_lines: self.buffer.height(),
@@ -39,6 +37,7 @@ impl View {
             file_name: format!("{file_info}"),
             is_modified: self.buffer.is_dirty(),
             file_type: file_info.get_file_type(),
+            mode,
         }
     }
 
@@ -172,10 +171,18 @@ impl View {
             Move::Down => self.move_down(1),
             Move::Left => self.move_left(),
             Move::Right => self.move_right(),
+            Move::HalfPageUp => self.move_up(height.saturating_div(2)),
+            Move::HalfPageDown => self.move_down(height.saturating_div(2)),
             Move::PageUp => self.move_up(height.saturating_sub(1)),
             Move::PageDown => self.move_down(height.saturating_sub(1)),
+            Move::ViewTop => self.move_to_view_top(),
+            Move::ViewBottom => self.move_to_view_bottom(),
+            Move::ViewCenter => self.move_to_view_center(),
             Move::StartOfLine => self.move_to_start_of_line(),
+            Move::FirstNonWhitespace => self.move_to_first_non_whitespace(),
             Move::EndOfLine => self.move_to_end_of_line(),
+            Move::BufferStart => self.move_to_buffer_start(),
+            Move::BufferEnd => self.move_to_buffer_end(),
         }
         if old_line_idx != self.text_location.line_idx {
             self.set_needs_redraw(true);
@@ -367,11 +374,45 @@ impl View {
             self.move_to_end_of_line();
         }
     }
+    fn move_to_view_top(&mut self) {
+        self.text_location.line_idx = self.scroll_offset.row;
+        self.snap_to_valid_line();
+        self.snap_to_valid_grapheme();
+    }
+    fn move_to_view_bottom(&mut self) {
+        self.text_location.line_idx = self
+            .scroll_offset
+            .row
+            .saturating_add(self.size.height)
+            .saturating_sub(1);
+        self.snap_to_valid_line();
+        self.snap_to_valid_grapheme();
+    }
+    fn move_to_view_center(&mut self) {
+        self.text_location.line_idx = self
+            .scroll_offset
+            .row
+            .saturating_add(self.size.height.saturating_div(2));
+        self.snap_to_valid_line();
+        self.snap_to_valid_grapheme();
+    }
     fn move_to_start_of_line(&mut self) {
         self.text_location.grapheme_idx = 0;
     }
+    fn move_to_first_non_whitespace(&mut self) {
+        self.text_location.grapheme_idx = self.buffer.first_non_whitespace_grapheme(self.text_location.line_idx);
+    }
     fn move_to_end_of_line(&mut self) {
         self.text_location.grapheme_idx = self.buffer.grapheme_count(self.text_location.line_idx);
+    }
+    fn move_to_buffer_start(&mut self) {
+        self.text_location.line_idx = 0;
+        self.text_location.grapheme_idx = 0;
+    }
+    fn move_to_buffer_end(&mut self) {
+        self.text_location.line_idx = self.buffer.height().saturating_sub(1);
+        self.snap_to_valid_line();
+        self.move_to_end_of_line();
     }
 
     // Ensures self.location.grapheme_idx points to a valid grapheme index by snapping it to the left most grapheme if appropriate.

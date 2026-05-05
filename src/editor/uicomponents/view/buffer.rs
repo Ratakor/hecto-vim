@@ -26,6 +26,11 @@ impl Buffer {
     pub fn grapheme_count(&self, idx: LineIdx) -> GraphemeIdx {
         self.lines.get(idx).map_or(0, Line::grapheme_count)
     }
+    pub fn first_non_whitespace_grapheme(&self, idx: LineIdx) -> GraphemeIdx {
+        self.lines
+            .get(idx)
+            .map_or(0, Line::first_non_whitespace_grapheme)
+    }
     pub fn width_until(&self, idx: LineIdx, until: GraphemeIdx) -> GraphemeIdx {
         self.lines
             .get(idx)

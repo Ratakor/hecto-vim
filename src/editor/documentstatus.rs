@@ -9,6 +9,7 @@ pub struct DocumentStatus {
     pub is_modified: bool,
     pub file_name: String,
     pub file_type: FileType,
+    pub mode: String,
 }
 
 impl DocumentStatus {

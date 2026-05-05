@@ -163,6 +163,12 @@ impl Line {
     pub fn grapheme_count(&self) -> GraphemeIdx {
         self.fragments.len()
     }
+    pub fn first_non_whitespace_grapheme(&self) -> GraphemeIdx {
+        self.fragments
+            .iter()
+            .position(|fragment| !fragment.grapheme.trim().is_empty())
+            .unwrap_or(0)
+    }
     pub fn width_until(&self, grapheme_idx: GraphemeIdx) -> ColIdx {
         self.fragments
             .iter()

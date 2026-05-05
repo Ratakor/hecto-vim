@@ -36,11 +36,22 @@ use self::command::{
 
 const QUIT_TIMES: u8 = 3;
 
-#[derive(Eq, PartialEq, Default, Clone, Copy)]
+#[derive(Eq, PartialEq, Default, Clone, Copy, Debug)]
 pub enum EditorMode {
     #[default]
     Normal,
     Insert,
+    Goto,
+}
+
+impl std::fmt::Display for EditorMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Normal => write!(f, "NORMAL"),
+            Self::Insert => write!(f, "INSERT"),
+            Self::Goto => write!(f, "GOTO"),
+        }
+    }
 }
 
 #[derive(Eq, PartialEq, Default)]
@@ -70,6 +81,7 @@ pub struct Editor {
     terminal_size: Size,
     title: String,
     quit_times: u8,
+    move_left_on_escape: bool,
 }
 
 impl Editor {
@@ -84,6 +96,7 @@ impl Editor {
         Terminal::initialize()?;
 
         let mut editor = Self::default();
+        editor.move_left_on_escape = false;
         let size = Terminal::size().unwrap_or_default();
         editor.handle_resize_command(size);
         editor.update_message("HELP: i = insert | :w = save | :q = quit | / = search");
@@ -175,7 +188,7 @@ impl Editor {
     }
 
     fn refresh_status(&mut self) {
-        let status = self.view.get_status();
+        let status = self.view.get_status(self.mode.to_string());
         let title = format!("{} - {NAME}", status.file_name);
         self.status_bar.update_status(status);
         if title != self.title && matches!(Terminal::set_title(&title), Ok(())) {
@@ -215,7 +228,25 @@ impl Editor {
                         match (key_event.code, key_event.modifiers) {
                             (KeyCode::Char('i'), KeyModifiers::NONE) => {
                                 self.mode = EditorMode::Insert;
-                                self.update_message("-- INSERT --");
+                                self.move_left_on_escape = false;
+                            }
+                            (KeyCode::Char('a'), KeyModifiers::NONE) => {
+                                self.process_command(Command::Move(Move::Right));
+                                self.mode = EditorMode::Insert;
+                                self.move_left_on_escape = true;
+                            }
+                            (KeyCode::Char('o'), KeyModifiers::NONE) => {
+                                self.process_command(Command::Move(Move::EndOfLine));
+                                self.process_command(Command::Edit(Edit::InsertNewline));
+                                self.mode = EditorMode::Insert;
+                                self.move_left_on_escape = false;
+                            }
+                            (KeyCode::Char('O'), KeyModifiers::SHIFT) | (KeyCode::Char('O'), KeyModifiers::NONE) => {
+                                self.process_command(Command::Move(Move::StartOfLine));
+                                self.process_command(Command::Edit(Edit::InsertNewline));
+                                self.process_command(Command::Move(Move::Up));
+                                self.mode = EditorMode::Insert;
+                                self.move_left_on_escape = false;
                             }
                             (KeyCode::Char(':'), KeyModifiers::NONE) => {
                                 self.set_prompt(PromptType::Command);
@@ -235,6 +266,18 @@ impl Editor {
                             (KeyCode::Char('l'), KeyModifiers::NONE) => {
                                 self.process_command(Command::Move(Move::Right));
                             }
+                            (KeyCode::Char('x'), KeyModifiers::NONE) => {
+                                self.process_command(Command::Edit(Edit::Delete));
+                            }
+                            (KeyCode::Char('u'), KeyModifiers::CONTROL) => {
+                                self.process_command(Command::Move(Move::HalfPageUp));
+                            }
+                            (KeyCode::Char('d'), KeyModifiers::CONTROL) => {
+                                self.process_command(Command::Move(Move::HalfPageDown));
+                            }
+                            (KeyCode::Char('g'), KeyModifiers::NONE) => {
+                                self.mode = EditorMode::Goto;
+                            }
                             _ => {
                                 if let Ok(command) = Command::try_from(event) {
                                     if !matches!(command, Command::Edit(_)) {
@@ -245,9 +288,44 @@ impl Editor {
                         }
                         return;
                     }
+                    EditorMode::Goto => {
+                        match (key_event.code, key_event.modifiers) {
+                            (KeyCode::Char('g'), KeyModifiers::NONE) => {
+                                self.process_command(Command::Move(Move::BufferStart));
+                            }
+                            (KeyCode::Char('e'), KeyModifiers::NONE) => {
+                                self.process_command(Command::Move(Move::BufferEnd));
+                            }
+                            (KeyCode::Char('h'), KeyModifiers::NONE) => {
+                                self.process_command(Command::Move(Move::StartOfLine));
+                            }
+                            (KeyCode::Char('l'), KeyModifiers::NONE) => {
+                                self.process_command(Command::Move(Move::EndOfLine));
+                            }
+                            (KeyCode::Char('s'), KeyModifiers::NONE) => {
+                                self.process_command(Command::Move(Move::FirstNonWhitespace));
+                            }
+                            (KeyCode::Char('t'), KeyModifiers::NONE) => {
+                                self.process_command(Command::Move(Move::ViewTop));
+                            }
+                            (KeyCode::Char('b'), KeyModifiers::NONE) => {
+                                self.process_command(Command::Move(Move::ViewBottom));
+                            }
+                            (KeyCode::Char('c'), KeyModifiers::NONE) => {
+                                self.process_command(Command::Move(Move::ViewCenter));
+                            }
+                            _ => {}
+                        }
+                        self.mode = EditorMode::Normal;
+                        return;
+                    }
                     EditorMode::Insert => {
                         if key_event.code == KeyCode::Esc {
                             self.mode = EditorMode::Normal;
+                            if self.move_left_on_escape {
+                                self.process_command(Command::Move(Move::Left));
+                                self.move_left_on_escape = false;
+                            }
                             self.update_message("");
                             return;
                         }
@@ -335,7 +413,7 @@ impl Editor {
             "w" => self.handle_save_command(),
             "wq" | "x" => {
                 self.save(None);
-                if !self.view.get_status().is_modified {
+                if !self.view.get_status(self.mode.to_string()).is_modified {
                     self.should_quit = true;
                 }
             }
@@ -367,9 +445,9 @@ impl Editor {
     // clippy::arithmetic_side_effects: quit_times is guaranteed to be between 0 and QUIT_TIMES
     #[allow(clippy::arithmetic_side_effects)]
     fn handle_quit_command(&mut self) {
-        if !self.view.get_status().is_modified || self.quit_times + 1 == QUIT_TIMES {
+        if !self.view.get_status(self.mode.to_string()).is_modified || self.quit_times + 1 == QUIT_TIMES {
             self.should_quit = true;
-        } else if self.view.get_status().is_modified {
+        } else if self.view.get_status(self.mode.to_string()).is_modified {
             self.update_message(&format!(
                 "WARNING! File has unsaved changes. Type :q {} more times to quit.",
                 QUIT_TIMES - self.quit_times - 1
@@ -441,8 +519,12 @@ impl Editor {
                 let query = self.command_bar.value();
                 self.view.search(&query);
             }
-            Command::Move(Move::Right | Move::Down) => self.view.search_next(),
-            Command::Move(Move::Up | Move::Left) => self.view.search_prev(),
+            Command::Move(Move::Right | Move::Down) => {
+                self.view.search_next();
+            }
+            Command::Move(Move::Up | Move::Left) => {
+                self.view.search_prev();
+            }
             Command::System(System::Resize(_)) | Command::Move(_) => {} // Not applicable during search, Resize already handled at this stage
         }
     }
