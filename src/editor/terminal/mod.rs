@@ -56,7 +56,7 @@ impl Terminal {
         Ok(())
     }
     pub fn clear_line() -> Result<(), Error> {
-        Self::queue_command(Clear(ClearType::CurrentLine))?;
+        Self::queue_command(Clear(ClearType::UntilNewLine))?;
         Ok(())
     }
     /// Moves the caret to the given Position.
@@ -101,7 +101,10 @@ impl Terminal {
         Ok(())
     }
     pub fn print_row(row: RowIdx, line_text: &str) -> Result<(), Error> {
-        Self::move_caret_to(Position { row, col: 0 })?;
+        Self::print_row_at(row, 0, line_text)
+    }
+    pub fn print_row_at(row: RowIdx, col: ColIdx, line_text: &str) -> Result<(), Error> {
+        Self::move_caret_to(Position { row, col })?;
         Self::clear_line()?;
         Self::print(line_text)?;
         Ok(())
@@ -110,7 +113,14 @@ impl Terminal {
         row: RowIdx,
         annotated_string: &AnnotatedString,
     ) -> Result<(), Error> {
-        Self::move_caret_to(Position { row, col: 0 })?;
+        Self::print_annotated_row_at(row, 0, annotated_string)
+    }
+    pub fn print_annotated_row_at(
+        row: RowIdx,
+        col: ColIdx,
+        annotated_string: &AnnotatedString,
+    ) -> Result<(), Error> {
+        Self::move_caret_to(Position { row, col })?;
         Self::clear_line()?;
         annotated_string
             .into_iter()
@@ -133,6 +143,15 @@ impl Terminal {
         if let Some(background_color) = attribute.background {
             Self::queue_command(SetBackgroundColor(background_color))?;
         }
+        Ok(())
+    }
+    pub fn set_foreground_color(color: crossterm::style::Color) -> Result<(), Error> {
+        Self::queue_command(SetForegroundColor(color))?;
+        Ok(())
+    }
+    pub fn reset_attributes() -> Result<(), Error> {
+        Self::queue_command(ResetColor)?;
+        Self::queue_command(crossterm::style::SetAttribute(Reset))?;
         Ok(())
     }
     fn reset_color() -> Result<(), Error> {

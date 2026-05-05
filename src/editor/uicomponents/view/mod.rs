@@ -152,6 +152,7 @@ impl View {
     }
     pub fn handle_move_command(&mut self, command: Move) {
         let Size { height, .. } = self.size;
+        let old_line_idx = self.text_location.line_idx;
         // This match moves the positon, but does not check for all boundaries.
         // The final boundarline checking happens after the match statement.
         match command {
@@ -164,14 +165,25 @@ impl View {
             Move::StartOfLine => self.move_to_start_of_line(),
             Move::EndOfLine => self.move_to_end_of_line(),
         }
+        if old_line_idx != self.text_location.line_idx {
+            self.set_needs_redraw(true);
+        }
         self.scroll_text_location_into_view();
     }
 
     pub fn move_to_position(&mut self, position: Position) {
-        let col = position.col.saturating_add(self.scroll_offset.col);
+        let gutter_width = self.gutter_width();
+        let col = position
+            .col
+            .saturating_sub(gutter_width)
+            .saturating_add(self.scroll_offset.col);
         let row = position.row.saturating_add(self.scroll_offset.row);
+        let old_line_idx = self.text_location.line_idx;
         self.text_location.line_idx = row;
         self.snap_to_valid_line();
+        if old_line_idx != self.text_location.line_idx {
+            self.set_needs_redraw(true);
+        }
         self.text_location.grapheme_idx = self.buffer.grapheme_at_width(self.text_location.line_idx, col);
         self.snap_to_valid_grapheme();
         self.scroll_text_location_into_view();
@@ -209,9 +221,15 @@ impl View {
 
     // region: Rendering
 
-    fn render_line(at: RowIdx, line_text: &str) -> Result<(), Error> {
-        Terminal::print_row(at, line_text)
+    pub fn gutter_width(&self) -> usize {
+        let total_lines = self.buffer.height();
+        if total_lines == 0 {
+            0
+        } else {
+            total_lines.to_string().len().max(3).saturating_add(1)
+        }
     }
+
     fn build_welcome_message(width: usize) -> String {
         if width == 0 {
             return String::new();
@@ -245,12 +263,17 @@ impl View {
         }
     }
     fn scroll_horizontally(&mut self, to: ColIdx) {
+        let gutter_width = self.gutter_width();
         let Size { width, .. } = self.size;
+        let usable_width = width.saturating_sub(gutter_width);
+        if usable_width == 0 {
+            return;
+        }
         let offset_changed = if to < self.scroll_offset.col {
             self.scroll_offset.col = to;
             true
-        } else if to >= self.scroll_offset.col.saturating_add(width) {
-            self.scroll_offset.col = to.saturating_sub(width).saturating_add(1);
+        } else if to >= self.scroll_offset.col.saturating_add(usable_width) {
+            self.scroll_offset.col = to.saturating_sub(usable_width).saturating_add(1);
             true
         } else {
             false
@@ -266,9 +289,11 @@ impl View {
     }
     fn center_text_location(&mut self) {
         let Size { height, width } = self.size;
+        let gutter_width = self.gutter_width();
+        let usable_width = width.saturating_sub(gutter_width);
         let Position { row, col } = self.text_location_to_position();
         let vertical_mid = height.div_ceil(2);
-        let horizontal_mid = width.div_ceil(2);
+        let horizontal_mid = usable_width.div_ceil(2);
         self.scroll_offset.row = row.saturating_sub(vertical_mid);
         self.scroll_offset.col = col.saturating_sub(horizontal_mid);
         self.set_needs_redraw(true);
@@ -278,8 +303,11 @@ impl View {
     // region: Location and Position Handling
 
     pub fn caret_position(&self) -> Position {
-        self.text_location_to_position()
-            .saturating_sub(self.scroll_offset)
+        let mut position = self
+            .text_location_to_position()
+            .saturating_sub(self.scroll_offset);
+        position.col = position.col.saturating_add(self.gutter_width());
+        position
     }
 
     fn text_location_to_position(&self) -> Position {
@@ -366,6 +394,8 @@ impl UIComponent for View {
 
     fn draw(&mut self, origin_row: RowIdx) -> Result<(), Error> {
         let Size { height, width } = self.size;
+        let gutter_width = self.gutter_width();
+        let usable_width = width.saturating_sub(gutter_width);
         let end_y = origin_row.saturating_add(height);
         let top_third = height.div_ceil(3);
         let scroll_top = self.scroll_offset.row;
@@ -391,17 +421,58 @@ impl UIComponent for View {
             let line_idx = current_row
                 .saturating_sub(origin_row)
                 .saturating_add(scroll_top);
+
+            Terminal::move_caret_to(Position {
+                row: current_row,
+                col: 0,
+            })?;
+            if line_idx < self.buffer.height() {
+                let is_current = line_idx == self.text_location.line_idx;
+                let label = if is_current {
+                    format!(
+                        "{:>width$}",
+                        line_idx.saturating_add(1),
+                        width = gutter_width.saturating_sub(1)
+                    )
+                } else {
+                    format!(
+                        "{:>width$}",
+                        line_idx.abs_diff(self.text_location.line_idx),
+                        width = gutter_width.saturating_sub(1)
+                    )
+                };
+                if is_current {
+                    Terminal::set_foreground_color(crossterm::style::Color::Yellow)?;
+                } else {
+                    Terminal::set_foreground_color(crossterm::style::Color::Grey)?;
+                }
+                Terminal::print(&label)?;
+                Terminal::reset_attributes()?;
+                Terminal::print(" ")?;
+            } else {
+                Terminal::print(&format!(
+                    "{:>width$}",
+                    "~",
+                    width = gutter_width.saturating_sub(1)
+                ))?;
+                Terminal::print(" ")?;
+            }
+
             let left = self.scroll_offset.col;
-            let right = self.scroll_offset.col.saturating_add(width);
+            let right = self.scroll_offset.col.saturating_add(usable_width);
             if let Some(annotated_string) =
                 self.buffer
                     .get_highlighted_substring(line_idx, left..right, &highlighter)
             {
-                Terminal::print_annotated_row(current_row, &annotated_string)?;
+                Terminal::print_annotated_row_at(current_row, gutter_width, &annotated_string)?;
             } else if current_row == top_third && self.buffer.is_empty() {
-                Self::render_line(current_row, &Self::build_welcome_message(width))?;
+                Terminal::print_row_at(
+                    current_row,
+                    gutter_width,
+                    &Self::build_welcome_message(usable_width),
+                )?;
             } else {
-                Self::render_line(current_row, "~")?;
+                Terminal::print_row_at(current_row, gutter_width, "")?;
             }
         }
         Ok(())
