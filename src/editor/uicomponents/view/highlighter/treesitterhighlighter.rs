@@ -1,4 +1,5 @@
 use super::{Annotation, AnnotationType, Line, SyntaxHighlighter};
+use crate::editor::FileType;
 use crate::prelude::*;
 use std::cmp::min;
 use tree_sitter::{Parser, Query, QueryCursor, Tree, StreamingIterator};
@@ -11,12 +12,25 @@ pub struct TreeSitterHighlighter {
 }
 
 impl TreeSitterHighlighter {
-    pub fn new() -> Self {
+    pub fn new(file_type: FileType) -> Self {
         let mut parser = Parser::new();
-        let language = tree_sitter_rust::LANGUAGE.into();
-        parser.set_language(&language).expect("Error loading Rust grammar");
-        let query = Query::new(&language, tree_sitter_rust::HIGHLIGHTS_QUERY)
-            .expect("Error loading Rust highlight query");
+        let (language, query_str) = match file_type {
+            FileType::Rust => (
+                tree_sitter_rust::LANGUAGE.into(),
+                tree_sitter_rust::HIGHLIGHTS_QUERY,
+            ),
+            FileType::JavaScript => (
+                tree_sitter_javascript::LANGUAGE.into(),
+                tree_sitter_javascript::HIGHLIGHT_QUERY,
+            ),
+            FileType::Zig => (
+                tree_sitter_zig::LANGUAGE.into(),
+                tree_sitter_zig::HIGHLIGHTS_QUERY,
+            ),
+            FileType::Text => panic!("Cannot create TreeSitterHighlighter for Text"),
+        };
+        parser.set_language(&language).expect("Error loading grammar");
+        let query = Query::new(&language, query_str).expect("Error loading highlight query");
 
         Self {
             parser,
@@ -156,17 +170,8 @@ impl SyntaxHighlighter for TreeSitterHighlighter {
     }
 
     fn update(&mut self, source_code: &str) {
-        // We pass None here to force a full reparse.
-        // Incremental parsing with tree.edit() would be more efficient but requires tracking exact edits.
-        // For now, full reparse on every edit is acceptable performance-wise since it only happens on keystrokes.
         self.tree = self.parser.parse(source_code, None);
         self.update_annotations(source_code);
-    }
-}
-
-impl Default for TreeSitterHighlighter {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -176,7 +181,7 @@ mod tests {
 
     #[test]
     fn test_rust_highlighting() {
-        let mut highlighter = TreeSitterHighlighter::new();
+        let mut highlighter = TreeSitterHighlighter::new(FileType::Rust);
         let source = "fn main() {\n    let x = 123;\n}";
         highlighter.update(source);
 
@@ -187,5 +192,35 @@ mod tests {
         let annotations_1 = highlighter.get_annotations(1).unwrap();
         assert!(annotations_1.iter().any(|a| a.annotation_type == AnnotationType::Keyword));
         assert!(annotations_1.iter().any(|a| a.annotation_type == AnnotationType::Constant));
+    }
+
+    #[test]
+    fn test_javascript_highlighting() {
+        let mut highlighter = TreeSitterHighlighter::new(FileType::JavaScript);
+        let source = "function main() {\n    const x = 123;\n}";
+        highlighter.update(source);
+
+        let annotations_0 = highlighter.get_annotations(0).unwrap();
+        assert!(annotations_0.iter().any(|a| a.annotation_type == AnnotationType::Keyword));
+        assert!(annotations_0.iter().any(|a| a.annotation_type == AnnotationType::Function));
+
+        let annotations_1 = highlighter.get_annotations(1).unwrap();
+        assert!(annotations_1.iter().any(|a| a.annotation_type == AnnotationType::Keyword));
+        assert!(annotations_1.iter().any(|a| a.annotation_type == AnnotationType::Number));
+    }
+
+    #[test]
+    fn test_zig_highlighting() {
+        let mut highlighter = TreeSitterHighlighter::new(FileType::Zig);
+        let source = "fn main() void {\n    const x = 123;\n}";
+        highlighter.update(source);
+
+        let annotations_0 = highlighter.get_annotations(0).unwrap();
+        assert!(annotations_0.iter().any(|a| a.annotation_type == AnnotationType::Keyword));
+        assert!(annotations_0.iter().any(|a| a.annotation_type == AnnotationType::Function));
+
+        let annotations_1 = highlighter.get_annotations(1).unwrap();
+        assert!(annotations_1.iter().any(|a| a.annotation_type == AnnotationType::Keyword));
+        assert!(annotations_1.iter().any(|a| a.annotation_type == AnnotationType::Number));
     }
 }

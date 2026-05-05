@@ -9,7 +9,9 @@ use treesitterhighlighter::TreeSitterHighlighter;
 
 pub fn create_syntax_highlighter(file_type: FileType) -> Option<Box<dyn SyntaxHighlighter>> {
     match file_type {
-        FileType::Rust => Some(Box::<TreeSitterHighlighter>::default()),
+        FileType::Rust | FileType::JavaScript | FileType::Zig => {
+            Some(Box::new(TreeSitterHighlighter::new(file_type)))
+        }
         FileType::Text => None,
     }
 }

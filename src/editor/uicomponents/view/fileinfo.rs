@@ -13,11 +13,16 @@ pub struct FileInfo {
 impl FileInfo {
     pub fn from(file_name: &str) -> Self {
         let path = PathBuf::from(file_name);
-        let file_type = if path
-            .extension()
-            .map_or(false, |ext| ext.eq_ignore_ascii_case("rs"))
-        {
-            FileType::Rust
+        let file_type = if let Some(ext) = path.extension() {
+            if ext.eq_ignore_ascii_case("rs") {
+                FileType::Rust
+            } else if ext.eq_ignore_ascii_case("js") {
+                FileType::JavaScript
+            } else if ext.eq_ignore_ascii_case("zig") {
+                FileType::Zig
+            } else {
+                FileType::Text
+            }
         } else {
             FileType::Text
         };
