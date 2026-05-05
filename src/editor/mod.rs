@@ -90,7 +90,10 @@ impl Editor {
     pub fn new() -> Result<Self, Error> {
         let current_hook = take_hook();
         set_hook(Box::new(move |panic_info| {
-            let _ = Terminal::terminate();
+            #[cfg(not(debug_assertions))]
+            {
+                let _ = Terminal::terminate();
+            }
             current_hook(panic_info);
         }));
         Terminal::initialize()?;
@@ -566,8 +569,5 @@ impl Editor {
 impl Drop for Editor {
     fn drop(&mut self) {
         let _ = Terminal::terminate();
-        if self.should_quit {
-            let _ = Terminal::print("Goodbye.\r\n");
-        }
     }
 }
