@@ -351,3 +351,86 @@ impl Deref for Line {
         &self.string
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_line_from() {
+        let line = Line::from("hello");
+        assert_eq!(line.string, "hello");
+        assert_eq!(line.grapheme_count(), 5);
+    }
+
+    #[test]
+    fn test_insert_char() {
+        let mut line = Line::from("hello");
+        line.insert_char('!', 5);
+        assert_eq!(line.string, "hello!");
+        line.insert_char(' ', 0);
+        assert_eq!(line.string, " hello!");
+    }
+
+    #[test]
+    fn test_delete() {
+        let mut line = Line::from("hello");
+        line.delete(0);
+        assert_eq!(line.string, "ello");
+        line.delete(3);
+        assert_eq!(line.string, "ell");
+    }
+
+    #[test]
+    fn test_append() {
+        let mut line1 = Line::from("hello ");
+        let line2 = Line::from("world");
+        line1.append(&line2);
+        assert_eq!(line1.string, "hello world");
+    }
+
+    #[test]
+    fn test_split() {
+        let mut line = Line::from("hello world");
+        let line2 = line.split(6);
+        assert_eq!(line.string, "hello ");
+        assert_eq!(line2.string, "world");
+    }
+
+    #[test]
+    fn test_search_forward() {
+        let line = Line::from("hello world hello");
+        assert_eq!(line.search_forward("hello", 0), Some(0));
+        assert_eq!(line.search_forward("hello", 1), Some(12));
+        assert_eq!(line.search_forward("world", 0), Some(6));
+        assert_eq!(line.search_forward("xyz", 0), None);
+    }
+
+    #[test]
+    fn test_search_backward() {
+        let line = Line::from("hello world hello");
+        assert_eq!(line.search_backward("hello", 17), Some(12));
+        assert_eq!(line.search_backward("hello", 11), Some(0));
+        assert_eq!(line.search_backward("world", 17), Some(6));
+    }
+
+    #[test]
+    fn test_grapheme_width() {
+        // "a" is width 1, "👍" is width 2
+        let line = Line::from("a👍b");
+        assert_eq!(line.width_until(0), 0);
+        assert_eq!(line.width_until(1), 1); // "a"
+        assert_eq!(line.width_until(2), 3); // "a👍"
+        assert_eq!(line.width_until(3), 4); // "a👍b"
+    }
+
+    #[test]
+    fn test_grapheme_at_width() {
+        let line = Line::from("a👍b");
+        assert_eq!(line.grapheme_at_width(0), 0);
+        assert_eq!(line.grapheme_at_width(1), 1);
+        assert_eq!(line.grapheme_at_width(2), 1); // inside "👍"
+        assert_eq!(line.grapheme_at_width(3), 2);
+        assert_eq!(line.grapheme_at_width(4), 3);
+    }
+}

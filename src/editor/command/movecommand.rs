@@ -40,3 +40,30 @@ impl TryFrom<KeyEvent> for Move {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_arrows() {
+        let event = KeyEvent::new(Up, KeyModifiers::NONE);
+        let mv = Move::try_from(event).unwrap();
+        assert!(matches!(mv, Move::Up));
+
+        let event = KeyEvent::new(Down, KeyModifiers::NONE);
+        let mv = Move::try_from(event).unwrap();
+        assert!(matches!(mv, Move::Down));
+    }
+
+    #[test]
+    fn test_parse_home_end() {
+        let event = KeyEvent::new(Home, KeyModifiers::NONE);
+        let mv = Move::try_from(event).unwrap();
+        assert!(matches!(mv, Move::StartOfLine));
+
+        let event = KeyEvent::new(End, KeyModifiers::NONE);
+        let mv = Move::try_from(event).unwrap();
+        assert!(matches!(mv, Move::EndOfLine));
+    }
+}

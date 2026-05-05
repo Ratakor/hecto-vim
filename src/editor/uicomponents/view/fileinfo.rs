@@ -52,3 +52,39 @@ impl Display for FileInfo {
         write!(formatter, "{name}")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_file_info_rust() {
+        let info = FileInfo::from("test.rs");
+        assert_eq!(info.get_file_type(), FileType::Rust);
+        assert_eq!(format!("{info}"), "test.rs");
+    }
+
+    #[test]
+    fn test_file_info_javascript() {
+        let info = FileInfo::from("test.js");
+        assert_eq!(info.get_file_type(), FileType::JavaScript);
+    }
+
+    #[test]
+    fn test_file_info_zig() {
+        let info = FileInfo::from("test.zig");
+        assert_eq!(info.get_file_type(), FileType::Zig);
+    }
+
+    #[test]
+    fn test_file_info_text() {
+        let info = FileInfo::from("test.txt");
+        assert_eq!(info.get_file_type(), FileType::Text);
+    }
+
+    #[test]
+    fn test_file_info_no_extension() {
+        let info = FileInfo::from("README");
+        assert_eq!(info.get_file_type(), FileType::Text);
+    }
+}

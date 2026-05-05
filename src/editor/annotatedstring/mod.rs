@@ -122,3 +122,69 @@ impl<'a> IntoIterator for &'a AnnotatedString {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_add_annotation() {
+        let mut s = AnnotatedString::from("hello");
+        s.add_annotation(AnnotationType::Keyword, 0, 5);
+        assert_eq!(s.annotations.len(), 1);
+        assert_eq!(s.annotations[0].start, 0);
+        assert_eq!(s.annotations[0].end, 5);
+    }
+
+    #[test]
+    fn test_replace_shorten() {
+        let mut s = AnnotatedString::from("hello world");
+        s.add_annotation(AnnotationType::Keyword, 6, 11); // "world"
+        s.replace(0, 5, "hi"); // "hi world"
+        assert_eq!(s.string, "hi world");
+        assert_eq!(s.annotations[0].start, 3);
+        assert_eq!(s.annotations[0].end, 8);
+    }
+
+    #[test]
+    fn test_replace_lengthen() {
+        let mut s = AnnotatedString::from("hi world");
+        s.add_annotation(AnnotationType::Keyword, 3, 8); // "world"
+        s.replace(0, 2, "hello"); // "hello world"
+        assert_eq!(s.string, "hello world");
+        assert_eq!(s.annotations[0].start, 6);
+        assert_eq!(s.annotations[0].end, 11);
+    }
+
+    #[test]
+    fn test_truncate_left() {
+        let mut s = AnnotatedString::from("hello world");
+        s.add_annotation(AnnotationType::Keyword, 6, 11); // "world"
+        s.truncate_left_until(6);
+        assert_eq!(s.string, "world");
+        assert_eq!(s.annotations[0].start, 0);
+        assert_eq!(s.annotations[0].end, 5);
+    }
+
+    #[test]
+    fn test_truncate_right() {
+        let mut s = AnnotatedString::from("hello world");
+        s.add_annotation(AnnotationType::Keyword, 0, 5); // "hello"
+        s.truncate_right_from(5);
+        assert_eq!(s.string, "hello");
+        assert_eq!(s.annotations[0].start, 0);
+        assert_eq!(s.annotations[0].end, 5);
+    }
+
+    #[test]
+    fn test_iterator() {
+        let mut s = AnnotatedString::from("hello world");
+        s.add_annotation(AnnotationType::Keyword, 0, 5);
+        let parts: Vec<AnnotatedStringPart> = s.into_iter().collect();
+        assert_eq!(parts.len(), 2);
+        assert_eq!(parts[0].string, "hello");
+        assert_eq!(parts[0].annotation_type, Some(AnnotationType::Keyword));
+        assert_eq!(parts[1].string, " world");
+        assert_eq!(parts[1].annotation_type, None);
+    }
+}
