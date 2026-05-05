@@ -1,12 +1,13 @@
 use crate::prelude::*;
 use crossterm::event::{
-    read, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEvent,
+    poll, read, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEvent,
     MouseEventKind,
 };
 use std::{
     env,
     io::Error,
     panic::{set_hook, take_hook},
+    time::Duration,
 };
 mod annotatedstring;
 pub mod annotationtype;
@@ -107,12 +108,27 @@ impl Editor {
             if self.should_quit {
                 break;
             }
-            match read() {
-                Ok(event) => self.evaluate_event(event),
+            match poll(Duration::from_millis(100)) {
+                Ok(true) => {
+                    match read() {
+                        Ok(event) => self.evaluate_event(event),
+                        Err(err) => {
+                            #[cfg(debug_assertions)]
+                            {
+                                panic!("Could not read event: {err:?}");
+                            }
+                            #[cfg(not(debug_assertions))]
+                            {
+                                let _ = err;
+                            }
+                        }
+                    }
+                }
+                Ok(false) => {}
                 Err(err) => {
                     #[cfg(debug_assertions)]
                     {
-                        panic!("Could not read event: {err:?}");
+                        panic!("Could not poll event: {err:?}");
                     }
                     #[cfg(not(debug_assertions))]
                     {
