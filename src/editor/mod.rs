@@ -43,6 +43,7 @@ pub enum EditorMode {
     Insert,
     Visual,
     Goto,
+    Help,
 }
 
 impl std::fmt::Display for EditorMode {
@@ -52,6 +53,7 @@ impl std::fmt::Display for EditorMode {
             Self::Insert => write!(f, "INSERT"),
             Self::Visual => write!(f, "VISUAL"),
             Self::Goto => write!(f, "GOTO"),
+            Self::Help => write!(f, "HELP"),
         }
     }
 }
@@ -162,6 +164,10 @@ impl Editor {
         if self.terminal_size.height == 0 || self.terminal_size.width == 0 {
             return;
         }
+        if self.mode == EditorMode::Help {
+            let _ = self.draw_help();
+            return;
+        }
         let bottom_bar_row = self.terminal_size.height.saturating_sub(1);
         let _ = Terminal::hide_caret();
         if self.in_prompt() {
@@ -199,6 +205,52 @@ impl Editor {
         if title != self.title && matches!(Terminal::set_title(&title), Ok(())) {
             self.title = title;
         }
+    }
+
+    fn draw_help(&mut self) -> Result<(), Error> {
+        let _ = Terminal::clear_screen();
+        let _ = Terminal::move_caret_to(Position::default());
+        let help_text = vec![
+            "HELP - ALL COMMANDS (Press any key to exit)",
+            "",
+            "[Movement]",
+            "  h, j, k, l : Left, Down, Up, Right",
+            "  Ctrl-u, Ctrl-d : Half page Up/Down",
+            "  g          : Enter Goto mode",
+            "    g/e      : Buffer Start/End",
+            "    h/l      : Line Start/End",
+            "    s        : First non-whitespace",
+            "    t/b/c    : View Top/Bottom/Center",
+            "",
+            "[Editing]",
+            "  i          : Insert mode",
+            "  a          : Append (Right + Insert)",
+            "  o, O       : Open line below/above + Insert",
+            "  u, U       : Undo, Redo",
+            "  p          : Paste clipboard",
+            "  d          : Delete char (Normal) / Selection (Visual)",
+            "",
+            "[Selection & Visual]",
+            "  v          : Toggle Visual mode",
+            "  x          : Select whole line (enters Visual)",
+            "  y          : Yank char (Normal) / Selection (Visual)",
+            "",
+            "[Search & Commands]",
+            "  /          : Search",
+            "  :          : Command mode",
+            "    :w [path] : Save",
+            "    :q, :q!   : Quit, Force quit",
+            "    :wq, :x   : Save and quit",
+            "    :syntax   : Toggle syntax highlighting",
+            "  ?          : Show this help",
+        ];
+
+        for (i, line) in help_text.iter().enumerate() {
+            if i < self.terminal_size.height {
+                Terminal::print_row_at(i, 0, line)?;
+            }
+        }
+        Terminal::execute()
     }
 
     fn evaluate_event(&mut self, event: Event) {
@@ -305,6 +357,9 @@ impl Editor {
                             (KeyCode::Char('g'), KeyModifiers::NONE) => {
                                 self.mode = EditorMode::Goto;
                             }
+                            (KeyCode::Char('?'), KeyModifiers::NONE) => {
+                                self.mode = EditorMode::Help;
+                            }
                             _ => {
                                 if let Ok(command) = Command::try_from(event) {
                                     if !matches!(command, Command::Edit(_)) {
@@ -406,6 +461,13 @@ impl Editor {
                             self.update_message("");
                             return;
                         }
+                    }
+                    EditorMode::Help => {
+                        self.mode = EditorMode::Normal;
+                        self.view.set_needs_redraw(true);
+                        self.status_bar.set_needs_redraw(true);
+                        self.message_bar.set_needs_redraw(true);
+                        return;
                     }
                 }
             }
