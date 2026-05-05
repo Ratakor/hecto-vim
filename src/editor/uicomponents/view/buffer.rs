@@ -162,6 +162,13 @@ impl Buffer {
     pub fn is_empty(&self) -> bool {
         self.lines.is_empty()
     }
+    pub fn as_string(&self) -> String {
+        self.lines
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<String>>()
+            .join("\n")
+    }
     pub const fn is_file_loaded(&self) -> bool {
         self.file_info.has_path()
     }

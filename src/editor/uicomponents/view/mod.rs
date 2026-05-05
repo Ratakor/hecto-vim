@@ -409,11 +409,9 @@ impl UIComponent for View {
             query,
             selected_match,
             self.buffer.get_file_info().get_file_type(),
+            &self.buffer.as_string(),
         );
 
-        for current_row in 0..end_y.saturating_add(scroll_top) {
-            self.buffer.highlight(current_row, &mut highlighter); //highlight from the start of the document to the end of the visible area, to ensure all annotations are up to date.
-        }
         for current_row in origin_row..end_y {
             // to get the correct line index, we have to take current_row (the absolute row on screen),
             // subtract origin_row to get the current row relative to the view (ranging from 0 to self.size.height)
@@ -427,6 +425,7 @@ impl UIComponent for View {
                 col: 0,
             })?;
             if line_idx < self.buffer.height() {
+                self.buffer.highlight(line_idx, &mut highlighter);
                 let is_current = line_idx == self.text_location.line_idx;
                 let label = if is_current {
                     format!(

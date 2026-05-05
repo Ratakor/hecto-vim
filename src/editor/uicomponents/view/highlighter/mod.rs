@@ -3,13 +3,20 @@ use crate::prelude::*;
 mod syntaxhighlighter;
 use searchresulthighlighter::SearchResultHighlighter;
 use syntaxhighlighter::SyntaxHighlighter;
-mod rustsyntaxhighlighter;
 mod searchresulthighlighter;
-use rustsyntaxhighlighter::RustSyntaxHighlighter;
+mod treesitterhighlighter;
+use treesitterhighlighter::TreeSitterHighlighter;
 
-fn create_syntax_highlighter(file_type: FileType) -> Option<Box<dyn SyntaxHighlighter>> {
+fn create_syntax_highlighter(
+    file_type: FileType,
+    source_code: &str,
+) -> Option<Box<dyn SyntaxHighlighter>> {
     match file_type {
-        FileType::Rust => Some(Box::<RustSyntaxHighlighter>::default()),
+        FileType::Rust => {
+            let mut highlighter = TreeSitterHighlighter::new();
+            highlighter.update_tree(source_code);
+            Some(Box::new(highlighter))
+        }
         FileType::Text => None,
     }
 }
@@ -25,11 +32,12 @@ impl<'a> Highlighter<'a> {
         matched_word: Option<&'a str>,
         selected_match: Option<Location>,
         file_type: FileType,
+        source_code: &str,
     ) -> Self {
         let search_result_highlighter = matched_word
             .map(|matched_word| SearchResultHighlighter::new(matched_word, selected_match));
         Self {
-            syntax_highlighter: create_syntax_highlighter(file_type),
+            syntax_highlighter: create_syntax_highlighter(file_type, source_code),
             search_result_highlighter,
         }
     }
