@@ -272,6 +272,26 @@ impl Buffer {
         }
     }
 
+    pub fn concat_range(&mut self, start: Location, end: Location) {
+        self.push_undo();
+        let (start, end) = if start <= end {
+            (start, end)
+        } else {
+            (end, start)
+        };
+        if self.lines.get(start.line_idx).is_none() {
+            return;
+        };
+        for line_idx in start.line_idx + 1..=end.line_idx {
+            if line_idx >= self.lines.len() {
+                break;
+            }
+            let next = self.lines.remove(line_idx);
+            self.lines[start.line_idx].append_char(' ');
+            self.lines[start.line_idx].append(&next);
+        }
+    }
+
     pub fn get_range(&self, start: Location, end: Location) -> String {
         let (start, end) = if start <= end {
             (start, end)

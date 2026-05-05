@@ -1,7 +1,5 @@
 - delete doesn't delete the full selection (last is missing), same for yank
 - Move cursor on undo/redo
-- add P command that print backward
-- add J command to concatenate string like in vim
 - goto functions should work in visual mode
 - add Space+p/Space+P/Space+y that uses system clipboard instead of editor clipboar
 - pairing brace
@@ -12,4 +10,3 @@
 - Add Ctrl-O and Ctrl-I that allow to jump to the previous/next location
 - LSP support
 - Rework syntax highlithing and use gruvbox dark theme by default?
--

@@ -211,12 +211,12 @@ impl Editor {
             "",
             "[Movement]",
             "  h, j, k, l : Left, Down, Up, Right",
-            "  Ctrl-u, Ctrl-d : Half page Up/Down",
+            "  C-u, C-d   : Half page Up/Down",
             "  g          : Enter Goto mode",
-            "    g/e      : Buffer Start/End",
-            "    h/l      : Line Start/End",
-            "    s        : First non-whitespace",
-            "    t/b/c    : View Top/Bottom/Center",
+            "  g/e        : Buffer Start/End",
+            "  h/l        : Line Start/End",
+            "  s          : First non-whitespace",
+            "  t/b/c      : View Top/Bottom/Center",
             "",
             "[Editing]",
             "  i          : Insert mode",
@@ -234,10 +234,10 @@ impl Editor {
             "[Search & Commands]",
             "  /          : Search",
             "  :          : Command mode",
-            "    :w [path] : Save",
-            "    :q, :q!   : Quit, Force quit",
-            "    :wq, :x   : Save and quit",
-            "    :syntax   : Toggle syntax highlighting",
+            "  :w [path]  : Save",
+            "  :q, :q!    : Quit, Force quit",
+            "  :wq, :x    : Save and quit",
+            "  :syntax    : Toggle syntax highlighting",
             "  ?          : Show this help",
         ];
 
@@ -339,6 +339,9 @@ impl Editor {
                             }
                             (KeyCode::Char('P'), KeyModifiers::SHIFT | KeyModifiers::NONE) => {
                                 self.view.paste_backward(&self.clipboard);
+                            }
+                            (KeyCode::Char('J'), KeyModifiers::SHIFT | KeyModifiers::NONE) => {
+                                self.view.concat_lines();
                             }
                             (KeyCode::Char('u'), KeyModifiers::NONE) => {
                                 self.process_command(Command::Edit(Edit::Undo));

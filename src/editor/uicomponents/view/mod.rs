@@ -173,12 +173,19 @@ impl View {
         self.set_needs_redraw(true);
     }
 
+    pub fn concat_lines(&mut self) {
+        let mut to = self.text_location;
+        to.line_idx += 1;
+        self.buffer.concat_range(self.text_location, to);
+        self.set_needs_redraw(true);
+    }
+
     pub fn toggle_syntax(&mut self) {
         self.syntax_enabled = !self.syntax_enabled;
         self.set_needs_redraw(true);
     }
 
-    pub const fn is_file_loaded(&self) -> bool {
+    pub fn is_file_loaded(&self) -> bool {
         self.buffer.is_file_loaded()
     }
 
