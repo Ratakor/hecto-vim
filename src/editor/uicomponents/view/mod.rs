@@ -4,9 +4,9 @@ use unicode_segmentation::UnicodeSegmentation;
 use crate::editor::RowIdx;
 use crate::prelude::*;
 
-use crate::editor::{DocumentStatus, Line, Terminal};
-use crate::editor::command::{Edit, Move};
 use super::UIComponent;
+use crate::editor::command::{Edit, Move};
+use crate::editor::{DocumentStatus, Line, Terminal};
 mod buffer;
 use buffer::Buffer;
 mod searchdirection;
@@ -81,7 +81,8 @@ impl View {
 
         if self.text_location.line_idx >= self.buffer.height() {
             self.text_location.line_idx = self.buffer.height().saturating_sub(1);
-            self.text_location.grapheme_idx = self.buffer.grapheme_count(self.text_location.line_idx);
+            self.text_location.grapheme_idx =
+                self.buffer.grapheme_count(self.text_location.line_idx);
         }
 
         self.text_location.preferred_grapheme_idx = self.text_location.grapheme_idx;
@@ -115,7 +116,8 @@ impl View {
     }
 
     pub fn get_selection(&self) -> Option<(Location, Location)> {
-        self.selection_start.map(|start| (start, self.text_location))
+        self.selection_start
+            .map(|start| (start, self.text_location))
     }
 
     pub fn get_selected_text(&self) -> Option<String> {
@@ -249,7 +251,8 @@ impl View {
     pub fn load(&mut self, file_name: &str) -> Result<(), Error> {
         let buffer = Buffer::load(file_name)?;
         self.buffer = buffer;
-        self.syntax_highlighter = create_syntax_highlighter(self.buffer.get_file_info().get_file_type());
+        self.syntax_highlighter =
+            create_syntax_highlighter(self.buffer.get_file_info().get_file_type());
         self.update_syntax_highlighter();
         self.set_needs_redraw(true);
         Ok(())
@@ -262,7 +265,8 @@ impl View {
     }
     pub fn save_as(&mut self, file_name: &str) -> Result<(), Error> {
         self.buffer.save_as(file_name)?;
-        self.syntax_highlighter = create_syntax_highlighter(self.buffer.get_file_info().get_file_type());
+        self.syntax_highlighter =
+            create_syntax_highlighter(self.buffer.get_file_info().get_file_type());
         self.update_syntax_highlighter();
         self.set_needs_redraw(true);
         Ok(())
@@ -317,7 +321,10 @@ impl View {
             Move::BufferStart => self.move_to_buffer_start(),
             Move::BufferEnd => self.move_to_buffer_end(),
         }
-        if old_location.line_idx != self.text_location.line_idx || (self.selection_start.is_some() && old_location.grapheme_idx != self.text_location.grapheme_idx) {
+        if old_location.line_idx != self.text_location.line_idx
+            || (self.selection_start.is_some()
+                && old_location.grapheme_idx != self.text_location.grapheme_idx)
+        {
             self.set_needs_redraw(true);
         }
         self.scroll_text_location_into_view();
@@ -333,10 +340,15 @@ impl View {
         let old_location = self.text_location;
         self.text_location.line_idx = row;
         self.snap_to_valid_line();
-        self.text_location.grapheme_idx = self.buffer.grapheme_at_width(self.text_location.line_idx, col);
+        self.text_location.grapheme_idx = self
+            .buffer
+            .grapheme_at_width(self.text_location.line_idx, col);
         self.text_location.preferred_grapheme_idx = self.text_location.grapheme_idx;
         self.snap_to_valid_grapheme();
-        if old_location.line_idx != self.text_location.line_idx || (self.selection_start.is_some() && old_location.grapheme_idx != self.text_location.grapheme_idx) {
+        if old_location.line_idx != self.text_location.line_idx
+            || (self.selection_start.is_some()
+                && old_location.grapheme_idx != self.text_location.grapheme_idx)
+        {
             self.set_needs_redraw(true);
         }
         self.scroll_text_location_into_view();
@@ -527,7 +539,9 @@ impl View {
         self.text_location.preferred_grapheme_idx = 0;
     }
     fn move_to_first_non_whitespace(&mut self) {
-        self.text_location.grapheme_idx = self.buffer.first_non_whitespace_grapheme(self.text_location.line_idx);
+        self.text_location.grapheme_idx = self
+            .buffer
+            .first_non_whitespace_grapheme(self.text_location.line_idx);
         self.text_location.preferred_grapheme_idx = self.text_location.grapheme_idx;
     }
     fn move_to_end_of_line(&mut self) {
@@ -556,7 +570,10 @@ impl View {
     // Ensures self.location.line_idx points to a valid line index by snapping it to the bottom most line if appropriate.
     // Doesn't trigger scrolling.
     fn snap_to_valid_line(&mut self) {
-        self.text_location.line_idx = min(self.text_location.line_idx, self.buffer.height().saturating_sub(1));
+        self.text_location.line_idx = min(
+            self.text_location.line_idx,
+            self.buffer.height().saturating_sub(1),
+        );
     }
 
     // endregion
@@ -595,12 +612,8 @@ impl UIComponent for View {
         } else {
             None
         };
-        let mut highlighter = Highlighter::new(
-            query,
-            selected_match,
-            selection,
-            syntax_highlighter,
-        );
+        let mut highlighter =
+            Highlighter::new(query, selected_match, selection, syntax_highlighter);
 
         for current_row in origin_row..end_y {
             // to get the correct line index, we have to take current_row (the absolute row on screen),

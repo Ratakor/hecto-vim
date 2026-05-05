@@ -1,8 +1,5 @@
 use crate::prelude::*;
-use crossterm::event::{
-    KeyCode,
-    KeyEvent, KeyModifiers,
-};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 #[derive(Clone, Copy)]
 pub enum System {

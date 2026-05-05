@@ -1,5 +1,5 @@
-use crate::prelude::*;
 use crate::editor::{Annotation, AnnotationType, Line};
+use crate::prelude::*;
 
 pub struct SelectionHighlighter {
     start: Location,
@@ -11,7 +11,10 @@ impl SelectionHighlighter {
         if start <= end {
             Self { start, end }
         } else {
-            Self { start: end, end: start }
+            Self {
+                start: end,
+                end: start,
+            }
         }
     }
 

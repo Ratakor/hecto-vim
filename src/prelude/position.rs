@@ -1,4 +1,4 @@
-use super::{ColIdx,RowIdx};
+use super::{ColIdx, RowIdx};
 
 #[derive(Copy, Clone, Default)]
 pub struct Position {

@@ -259,7 +259,9 @@ impl Line {
         if grapheme_idx >= self.grapheme_count() {
             return self.string.len();
         }
-        self.fragments.get(grapheme_idx).map_or(0, |fragment| fragment.start)
+        self.fragments
+            .get(grapheme_idx)
+            .map_or(0, |fragment| fragment.start)
     }
     pub fn search_forward(
         &self,

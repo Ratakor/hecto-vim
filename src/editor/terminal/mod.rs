@@ -2,11 +2,11 @@ mod attribute;
 use crate::prelude::*;
 use attribute::Attribute;
 use crossterm::cursor::{Hide, MoveTo, SetCursorStyle, Show};
+use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
 use crossterm::style::{
     Attribute::{Reset, Reverse},
     Print, ResetColor, SetBackgroundColor, SetForegroundColor,
 };
-use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
 use crossterm::terminal::{
     disable_raw_mode, enable_raw_mode, size, Clear, ClearType, DisableLineWrap, EnableLineWrap,
     EnterAlternateScreen, LeaveAlternateScreen, SetTitle,

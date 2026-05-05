@@ -1,9 +1,9 @@
 use super::super::super::{Annotation, AnnotationType, FileType, Line};
 use crate::prelude::*;
-mod syntaxhighlighter;
 mod selectionhighlighter;
-use selectionhighlighter::SelectionHighlighter;
+mod syntaxhighlighter;
 use searchresulthighlighter::SearchResultHighlighter;
+use selectionhighlighter::SelectionHighlighter;
 pub use syntaxhighlighter::SyntaxHighlighter;
 mod searchresulthighlighter;
 mod treesitterhighlighter;
@@ -34,7 +34,8 @@ impl<'a> Highlighter<'a> {
     ) -> Self {
         let search_result_highlighter = matched_word
             .map(|matched_word| SearchResultHighlighter::new(matched_word, selected_match));
-        let selection_highlighter = selection.map(|(start, end)| SelectionHighlighter::new(start, end));
+        let selection_highlighter =
+            selection.map(|(start, end)| SelectionHighlighter::new(start, end));
         Self {
             syntax_highlighter,
             search_result_highlighter,

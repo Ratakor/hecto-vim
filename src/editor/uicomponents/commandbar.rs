@@ -104,7 +104,10 @@ impl CommandBar {
         self.set_needs_redraw(true);
     }
     pub fn move_caret_right(&mut self) {
-        self.caret_pos = min(self.caret_pos.saturating_add(1), self.value.grapheme_count());
+        self.caret_pos = min(
+            self.caret_pos.saturating_add(1),
+            self.value.grapheme_count(),
+        );
         self.set_needs_redraw(true);
     }
 }

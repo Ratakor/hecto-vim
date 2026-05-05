@@ -2,7 +2,7 @@ use super::{Annotation, AnnotationType, Line, SyntaxHighlighter};
 use crate::editor::FileType;
 use crate::prelude::*;
 use std::cmp::min;
-use tree_sitter::{Parser, Query, QueryCursor, Tree, StreamingIterator};
+use tree_sitter::{Parser, Query, QueryCursor, StreamingIterator, Tree};
 
 pub struct TreeSitterHighlighter {
     parser: Parser,
@@ -29,7 +29,9 @@ impl TreeSitterHighlighter {
             ),
             FileType::Text => panic!("Cannot create TreeSitterHighlighter for Text"),
         };
-        parser.set_language(&language).expect("Error loading grammar");
+        parser
+            .set_language(&language)
+            .expect("Error loading grammar");
         let query = Query::new(&language, query_str).expect("Error loading highlight query");
 
         Self {
@@ -110,13 +112,15 @@ impl TreeSitterHighlighter {
         if let Some(tree) = &self.tree {
             let mut cursor = QueryCursor::new();
             let mut matches = cursor.matches(&self.query, tree.root_node(), source_code.as_bytes());
-            
+
             let capture_names = self.query.capture_names();
 
             while let Some(m) = matches.next() {
                 for capture in m.captures {
                     let capture_name = &capture_names[capture.index as usize];
-                    if let Some(annotation_type) = Self::map_capture_to_annotation_type(capture_name) {
+                    if let Some(annotation_type) =
+                        Self::map_capture_to_annotation_type(capture_name)
+                    {
                         let range = capture.node.range();
                         let start_byte = range.start_byte;
                         let end_byte = range.end_byte;
@@ -127,7 +131,7 @@ impl TreeSitterHighlighter {
                             if row >= line_info.len() {
                                 break;
                             }
-                            
+
                             let (line_start, line_len) = line_info[row];
 
                             let start = if row == start_row {
@@ -146,7 +150,8 @@ impl TreeSitterHighlighter {
                             let end = min(end, line_len);
 
                             if start < end {
-                                let line_annotations: &mut Vec<Annotation> = &mut annotations_per_line[row];
+                                let line_annotations: &mut Vec<Annotation> =
+                                    &mut annotations_per_line[row];
                                 line_annotations.push(Annotation {
                                     annotation_type,
                                     start,
@@ -186,12 +191,20 @@ mod tests {
         highlighter.update(source);
 
         let annotations_0 = highlighter.get_annotations(0).unwrap();
-        assert!(annotations_0.iter().any(|a| a.annotation_type == AnnotationType::Keyword));
-        assert!(annotations_0.iter().any(|a| a.annotation_type == AnnotationType::Function));
+        assert!(annotations_0
+            .iter()
+            .any(|a| a.annotation_type == AnnotationType::Keyword));
+        assert!(annotations_0
+            .iter()
+            .any(|a| a.annotation_type == AnnotationType::Function));
 
         let annotations_1 = highlighter.get_annotations(1).unwrap();
-        assert!(annotations_1.iter().any(|a| a.annotation_type == AnnotationType::Keyword));
-        assert!(annotations_1.iter().any(|a| a.annotation_type == AnnotationType::Constant));
+        assert!(annotations_1
+            .iter()
+            .any(|a| a.annotation_type == AnnotationType::Keyword));
+        assert!(annotations_1
+            .iter()
+            .any(|a| a.annotation_type == AnnotationType::Constant));
     }
 
     #[test]
@@ -201,12 +214,20 @@ mod tests {
         highlighter.update(source);
 
         let annotations_0 = highlighter.get_annotations(0).unwrap();
-        assert!(annotations_0.iter().any(|a| a.annotation_type == AnnotationType::Keyword));
-        assert!(annotations_0.iter().any(|a| a.annotation_type == AnnotationType::Function));
+        assert!(annotations_0
+            .iter()
+            .any(|a| a.annotation_type == AnnotationType::Keyword));
+        assert!(annotations_0
+            .iter()
+            .any(|a| a.annotation_type == AnnotationType::Function));
 
         let annotations_1 = highlighter.get_annotations(1).unwrap();
-        assert!(annotations_1.iter().any(|a| a.annotation_type == AnnotationType::Keyword));
-        assert!(annotations_1.iter().any(|a| a.annotation_type == AnnotationType::Number));
+        assert!(annotations_1
+            .iter()
+            .any(|a| a.annotation_type == AnnotationType::Keyword));
+        assert!(annotations_1
+            .iter()
+            .any(|a| a.annotation_type == AnnotationType::Number));
     }
 
     #[test]
@@ -216,11 +237,19 @@ mod tests {
         highlighter.update(source);
 
         let annotations_0 = highlighter.get_annotations(0).unwrap();
-        assert!(annotations_0.iter().any(|a| a.annotation_type == AnnotationType::Keyword));
-        assert!(annotations_0.iter().any(|a| a.annotation_type == AnnotationType::Function));
+        assert!(annotations_0
+            .iter()
+            .any(|a| a.annotation_type == AnnotationType::Keyword));
+        assert!(annotations_0
+            .iter()
+            .any(|a| a.annotation_type == AnnotationType::Function));
 
         let annotations_1 = highlighter.get_annotations(1).unwrap();
-        assert!(annotations_1.iter().any(|a| a.annotation_type == AnnotationType::Keyword));
-        assert!(annotations_1.iter().any(|a| a.annotation_type == AnnotationType::Number));
+        assert!(annotations_1
+            .iter()
+            .any(|a| a.annotation_type == AnnotationType::Keyword));
+        assert!(annotations_1
+            .iter()
+            .any(|a| a.annotation_type == AnnotationType::Number));
     }
 }

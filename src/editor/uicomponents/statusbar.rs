@@ -49,7 +49,11 @@ impl UIComponent for StatusBar {
 
         // Assemble the whole status bar
 
-        let remainder_len = self.size.width.saturating_sub(beginning.len()).saturating_sub(2);
+        let remainder_len = self
+            .size
+            .width
+            .saturating_sub(beginning.len())
+            .saturating_sub(2);
         let status = format!(" {beginning}{back_part:>remainder_len$} ");
 
         //Only print out the status if it fits. Otherwise write out an empty string to ensure the row is cleared.

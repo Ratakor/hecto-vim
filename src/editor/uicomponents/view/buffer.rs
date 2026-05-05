@@ -3,11 +3,11 @@ use super::FileInfo;
 use super::Highlighter;
 use super::Line;
 use crate::prelude::*;
+use std::cmp::min;
 use std::fs::{read_to_string, File};
 use std::io::Error;
 use std::io::Write;
 use std::ops::Range;
-use std::cmp::min;
 
 pub struct Buffer {
     lines: Vec<Line>,
@@ -88,7 +88,10 @@ impl Buffer {
         highlighter: &Highlighter,
     ) -> Option<AnnotatedString> {
         self.lines.get(line_idx).map(|line| {
-            line.get_annotated_visible_substr(range, Some(&highlighter.get_annotations(line_idx, line)))
+            line.get_annotated_visible_substr(
+                range,
+                Some(&highlighter.get_annotations(line_idx, line)),
+            )
         })
     }
 
@@ -270,7 +273,11 @@ impl Buffer {
     }
 
     pub fn get_range(&self, start: Location, end: Location) -> String {
-        let (start, end) = if start <= end { (start, end) } else { (end, start) };
+        let (start, end) = if start <= end {
+            (start, end)
+        } else {
+            (end, start)
+        };
         let mut result = Vec::new();
         for line_idx in start.line_idx..=end.line_idx {
             if let Some(line) = self.lines.get(line_idx) {
@@ -292,7 +299,11 @@ impl Buffer {
 
     pub fn delete_range(&mut self, start: Location, end: Location) {
         self.push_undo();
-        let (start, end) = if start <= end { (start, end) } else { (end, start) };
+        let (start, end) = if start <= end {
+            (start, end)
+        } else {
+            (end, start)
+        };
 
         if start.line_idx == end.line_idx {
             if let Some(line) = self.lines.get_mut(start.line_idx) {

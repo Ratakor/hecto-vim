@@ -1,8 +1,8 @@
+use super::{Annotation, AnnotationType};
 use std::{
     cmp::{max, min},
     fmt::{self, Display},
 };
-use super::{Annotation, AnnotationType};
 mod annotatedstringpart;
 use annotatedstringpart::AnnotatedStringPart;
 mod annotatedstringiterator;

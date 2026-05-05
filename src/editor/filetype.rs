@@ -1,4 +1,4 @@
-use std::fmt::{Display, Result, Formatter};
+use std::fmt::{Display, Formatter, Result};
 
 #[derive(Default, Eq, PartialEq, Debug, Copy, Clone)]
 pub enum FileType {

@@ -1,8 +1,11 @@
 use crate::prelude::*;
-use crossterm::{event::{
-    poll, read, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEvent,
-    MouseEventKind,
-},cursor::SetCursorStyle};
+use crossterm::{
+    cursor::SetCursorStyle,
+    event::{
+        poll, read, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEvent,
+        MouseEventKind,
+    },
+};
 use std::{
     env,
     io::Error,
@@ -27,12 +30,7 @@ use line::Line;
 use terminal::Terminal;
 use uicomponents::{CommandBar, MessageBar, StatusBar, UIComponent, View};
 
-use self::command::{
-    Command,
-    Edit,
-    Move,
-    System,
-};
+use self::command::{Command, Edit, Move, System};
 
 const QUIT_TIMES: u8 = 3;
 
@@ -129,21 +127,19 @@ impl Editor {
                 break;
             }
             match poll(Duration::from_millis(100)) {
-                Ok(true) => {
-                    match read() {
-                        Ok(event) => self.evaluate_event(event),
-                        Err(err) => {
-                            #[cfg(debug_assertions)]
-                            {
-                                panic!("Could not read event: {err:?}");
-                            }
-                            #[cfg(not(debug_assertions))]
-                            {
-                                let _ = err;
-                            }
+                Ok(true) => match read() {
+                    Ok(event) => self.evaluate_event(event),
+                    Err(err) => {
+                        #[cfg(debug_assertions)]
+                        {
+                            panic!("Could not read event: {err:?}");
+                        }
+                        #[cfg(not(debug_assertions))]
+                        {
+                            let _ = err;
                         }
                     }
-                }
+                },
                 Ok(false) => {}
                 Err(err) => {
                     #[cfg(debug_assertions)]
@@ -295,7 +291,8 @@ impl Editor {
                                 self.process_command(Command::Edit(Edit::InsertNewline));
                                 self.enter_insert_mode(false);
                             }
-                            (KeyCode::Char('O'), KeyModifiers::SHIFT) | (KeyCode::Char('O'), KeyModifiers::NONE) => {
+                            (KeyCode::Char('O'), KeyModifiers::SHIFT)
+                            | (KeyCode::Char('O'), KeyModifiers::NONE) => {
                                 self.process_command(Command::Move(Move::StartOfLine));
                                 self.process_command(Command::Edit(Edit::InsertNewline));
                                 self.process_command(Command::Move(Move::Up));
@@ -331,7 +328,8 @@ impl Editor {
                                 self.view.select_line_down();
                                 self.mode = EditorMode::Visual;
                             }
-                            (KeyCode::Char('X'), KeyModifiers::SHIFT) | (KeyCode::Char('X'), KeyModifiers::NONE) => {
+                            (KeyCode::Char('X'), KeyModifiers::SHIFT)
+                            | (KeyCode::Char('X'), KeyModifiers::NONE) => {
                                 self.view.select_line_up();
                                 self.mode = EditorMode::Visual;
                             }
@@ -345,7 +343,8 @@ impl Editor {
                             (KeyCode::Char('u'), KeyModifiers::NONE) => {
                                 self.process_command(Command::Edit(Edit::Undo));
                             }
-                            (KeyCode::Char('U'), KeyModifiers::SHIFT) | (KeyCode::Char('U'), KeyModifiers::NONE) => {
+                            (KeyCode::Char('U'), KeyModifiers::SHIFT)
+                            | (KeyCode::Char('U'), KeyModifiers::NONE) => {
                                 self.process_command(Command::Edit(Edit::Redo));
                             }
                             (KeyCode::Char('u'), KeyModifiers::CONTROL) => {
@@ -372,14 +371,16 @@ impl Editor {
                     }
                     EditorMode::Visual => {
                         match (key_event.code, key_event.modifiers) {
-                            (KeyCode::Char('v'), KeyModifiers::NONE) | (KeyCode::Esc, KeyModifiers::NONE) => {
+                            (KeyCode::Char('v'), KeyModifiers::NONE)
+                            | (KeyCode::Esc, KeyModifiers::NONE) => {
                                 self.mode = EditorMode::Normal;
                                 self.view.clear_selection();
                             }
                             (KeyCode::Char('x'), KeyModifiers::NONE) => {
                                 self.view.select_line_down();
                             }
-                            (KeyCode::Char('X'), KeyModifiers::SHIFT) | (KeyCode::Char('X'), KeyModifiers::NONE) => {
+                            (KeyCode::Char('X'), KeyModifiers::SHIFT)
+                            | (KeyCode::Char('X'), KeyModifiers::NONE) => {
                                 self.view.select_line_up();
                             }
                             (KeyCode::Char('h'), KeyModifiers::NONE) => {
@@ -632,7 +633,9 @@ impl Editor {
     // clippy::arithmetic_side_effects: quit_times is guaranteed to be between 0 and QUIT_TIMES
     #[allow(clippy::arithmetic_side_effects)]
     fn handle_quit_command(&mut self) {
-        if !self.view.get_status(self.mode.to_string()).is_modified || self.quit_times + 1 == QUIT_TIMES {
+        if !self.view.get_status(self.mode.to_string()).is_modified
+            || self.quit_times + 1 == QUIT_TIMES
+        {
             self.should_quit = true;
         } else if self.view.get_status(self.mode.to_string()).is_modified {
             self.update_message(&format!(
