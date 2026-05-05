@@ -1,5 +1,6 @@
 use super::{Annotation, AnnotationType, Line, SyntaxHighlighter};
 use crate::prelude::*;
+use std::cmp::min;
 use tree_sitter::{Parser, Query, QueryCursor, Tree, StreamingIterator};
 
 pub struct TreeSitterHighlighter {
@@ -82,14 +83,15 @@ impl TreeSitterHighlighter {
     }
 
     fn update_annotations(&mut self, source_code: &str) {
-        let mut line_starts = Vec::new();
+        let mut line_info = Vec::new();
         let mut current_pos = 0;
-        for line in source_code.split_inclusive('\n') {
-            line_starts.push(current_pos);
-            current_pos += line.len();
+        let lines: Vec<&str> = source_code.lines().collect();
+        for line in &lines {
+            line_info.push((current_pos, line.len()));
+            current_pos += line.len() + 1; // +1 for the \n
         }
 
-        let mut annotations_per_line: Vec<Vec<Annotation>> = vec![Vec::new(); line_starts.len()];
+        let mut annotations_per_line: Vec<Vec<Annotation>> = vec![Vec::new(); line_info.len()];
 
         if let Some(tree) = &self.tree {
             let mut cursor = QueryCursor::new();
@@ -108,16 +110,11 @@ impl TreeSitterHighlighter {
                         let end_row = range.end_point.row;
 
                         for row in start_row..=end_row {
-                            if row >= line_starts.len() {
+                            if row >= line_info.len() {
                                 break;
                             }
                             
-                            let line_start = line_starts[row];
-                            let line_end = if row + 1 < line_starts.len() {
-                                line_starts[row + 1]
-                            } else {
-                                source_code.len()
-                            };
+                            let (line_start, line_len) = line_info[row];
 
                             let start = if row == start_row {
                                 start_byte.saturating_sub(line_start)
@@ -128,8 +125,11 @@ impl TreeSitterHighlighter {
                             let end = if row == end_row {
                                 end_byte.saturating_sub(line_start)
                             } else {
-                                line_end.saturating_sub(line_start)
+                                line_len
                             };
+
+                            let start = min(start, line_len);
+                            let end = min(end, line_len);
 
                             if start < end {
                                 let line_annotations: &mut Vec<Annotation> = &mut annotations_per_line[row];
@@ -156,7 +156,10 @@ impl SyntaxHighlighter for TreeSitterHighlighter {
     }
 
     fn update(&mut self, source_code: &str) {
-        self.tree = self.parser.parse(source_code, self.tree.as_ref());
+        // We pass None here to force a full reparse.
+        // Incremental parsing with tree.edit() would be more efficient but requires tracking exact edits.
+        // For now, full reparse on every edit is acceptable performance-wise since it only happens on keystrokes.
+        self.tree = self.parser.parse(source_code, None);
         self.update_annotations(source_code);
     }
 }
