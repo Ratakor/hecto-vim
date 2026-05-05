@@ -156,6 +156,23 @@ impl View {
         self.set_needs_redraw(true);
     }
 
+    pub fn paste_backward(&mut self, text: &str) {
+        if text.is_empty() {
+            return;
+        }
+        let mut at = self.text_location;
+        if at.grapheme_idx == 0 {
+            at.line_idx = at.line_idx.saturating_sub(1);
+        } else {
+            at.grapheme_idx -= 1;
+        }
+        self.buffer.insert_string(text, at);
+        for _ in 0..text.grapheme_indices(true).count() {
+            self.handle_move_command(Move::Right);
+        }
+        self.set_needs_redraw(true);
+    }
+
     pub fn toggle_syntax(&mut self) {
         self.syntax_enabled = !self.syntax_enabled;
         self.set_needs_redraw(true);

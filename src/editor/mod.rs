@@ -291,8 +291,7 @@ impl Editor {
                                 self.process_command(Command::Edit(Edit::InsertNewline));
                                 self.enter_insert_mode(false);
                             }
-                            (KeyCode::Char('O'), KeyModifiers::SHIFT)
-                            | (KeyCode::Char('O'), KeyModifiers::NONE) => {
+                            (KeyCode::Char('O'), KeyModifiers::SHIFT | KeyModifiers::NONE) => {
                                 self.process_command(Command::Move(Move::StartOfLine));
                                 self.process_command(Command::Edit(Edit::InsertNewline));
                                 self.process_command(Command::Move(Move::Up));
@@ -328,8 +327,7 @@ impl Editor {
                                 self.view.select_line_down();
                                 self.mode = EditorMode::Visual;
                             }
-                            (KeyCode::Char('X'), KeyModifiers::SHIFT)
-                            | (KeyCode::Char('X'), KeyModifiers::NONE) => {
+                            (KeyCode::Char('X'), KeyModifiers::SHIFT | KeyModifiers::NONE) => {
                                 self.view.select_line_up();
                                 self.mode = EditorMode::Visual;
                             }
@@ -337,14 +335,15 @@ impl Editor {
                                 self.process_command(Command::Edit(Edit::Delete));
                             }
                             (KeyCode::Char('p'), KeyModifiers::NONE) => {
-                                let text = self.clipboard.clone();
-                                self.view.paste(&text);
+                                self.view.paste(&self.clipboard);
+                            }
+                            (KeyCode::Char('P'), KeyModifiers::SHIFT | KeyModifiers::NONE) => {
+                                self.view.paste_backward(&self.clipboard);
                             }
                             (KeyCode::Char('u'), KeyModifiers::NONE) => {
                                 self.process_command(Command::Edit(Edit::Undo));
                             }
-                            (KeyCode::Char('U'), KeyModifiers::SHIFT)
-                            | (KeyCode::Char('U'), KeyModifiers::NONE) => {
+                            (KeyCode::Char('U'), KeyModifiers::SHIFT | KeyModifiers::NONE) => {
                                 self.process_command(Command::Edit(Edit::Redo));
                             }
                             (KeyCode::Char('u'), KeyModifiers::CONTROL) => {
@@ -379,8 +378,7 @@ impl Editor {
                             (KeyCode::Char('x'), KeyModifiers::NONE) => {
                                 self.view.select_line_down();
                             }
-                            (KeyCode::Char('X'), KeyModifiers::SHIFT)
-                            | (KeyCode::Char('X'), KeyModifiers::NONE) => {
+                            (KeyCode::Char('X'), KeyModifiers::SHIFT | KeyModifiers::NONE) => {
                                 self.view.select_line_up();
                             }
                             (KeyCode::Char('h'), KeyModifiers::NONE) => {
