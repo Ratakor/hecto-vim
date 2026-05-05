@@ -496,6 +496,17 @@ impl Editor {
             MouseEventKind::Down(MouseButton::Left) => {
                 if mouse_pos.row < self.terminal_size.height.saturating_sub(2) {
                     self.view.move_to_position(mouse_pos);
+                    self.view.clear_selection();
+                    self.mode = EditorMode::Normal;
+                }
+            }
+            MouseEventKind::Drag(MouseButton::Left) => {
+                if mouse_pos.row < self.terminal_size.height.saturating_sub(2) {
+                    if self.mode != EditorMode::Visual {
+                        self.mode = EditorMode::Visual;
+                        self.view.start_selection();
+                    }
+                    self.view.move_to_position(mouse_pos);
                 }
             }
             MouseEventKind::ScrollUp => {
