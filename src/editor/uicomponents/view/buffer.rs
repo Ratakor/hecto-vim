@@ -93,6 +93,7 @@ impl Buffer {
                 return Some(Location {
                     grapheme_idx,
                     line_idx,
+                    preferred_grapheme_idx: grapheme_idx,
                 });
             }
         }
@@ -127,6 +128,7 @@ impl Buffer {
                 return Some(Location {
                     grapheme_idx,
                     line_idx,
+                    preferred_grapheme_idx: grapheme_idx,
                 });
             }
         }

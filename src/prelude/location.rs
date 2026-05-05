@@ -4,4 +4,5 @@ use super::{GraphemeIdx, LineIdx};
 pub struct Location {
     pub grapheme_idx: GraphemeIdx,
     pub line_idx: LineIdx,
+    pub preferred_grapheme_idx: GraphemeIdx,
 }

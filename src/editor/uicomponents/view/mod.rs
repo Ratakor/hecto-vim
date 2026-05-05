@@ -118,6 +118,7 @@ impl View {
         let location = Location {
             line_idx: self.text_location.line_idx,
             grapheme_idx: self.text_location.grapheme_idx.saturating_add(step_right), //Start the new search behind the current match
+            preferred_grapheme_idx: self.text_location.grapheme_idx.saturating_add(step_right),
         };
         self.search_in_direction(location, SearchDirection::Forward);
     }
@@ -204,6 +205,7 @@ impl View {
             self.set_needs_redraw(true);
         }
         self.text_location.grapheme_idx = self.buffer.grapheme_at_width(self.text_location.line_idx, col);
+        self.text_location.preferred_grapheme_idx = self.text_location.grapheme_idx;
         self.snap_to_valid_grapheme();
         self.scroll_text_location_into_view();
     }
@@ -348,8 +350,8 @@ impl View {
     }
     fn move_down(&mut self, step: usize) {
         self.text_location.line_idx = self.text_location.line_idx.saturating_add(step);
-        self.snap_to_valid_grapheme();
         self.snap_to_valid_line();
+        self.snap_to_valid_grapheme();
     }
     // clippy::arithmetic_side_effects: This function performs arithmetic calculations
     // after explicitly checking that the target value will be within bounds.
@@ -362,6 +364,7 @@ impl View {
             self.move_to_start_of_line();
             self.move_down(1);
         }
+        self.text_location.preferred_grapheme_idx = self.text_location.grapheme_idx;
     }
     // clippy::arithmetic_side_effects: This function performs arithmetic calculations
     // after explicitly checking that the target value will be within bounds.
@@ -373,6 +376,7 @@ impl View {
             self.move_up(1);
             self.move_to_end_of_line();
         }
+        self.text_location.preferred_grapheme_idx = self.text_location.grapheme_idx;
     }
     fn move_to_view_top(&mut self) {
         self.text_location.line_idx = self.scroll_offset.row;
@@ -398,16 +402,20 @@ impl View {
     }
     fn move_to_start_of_line(&mut self) {
         self.text_location.grapheme_idx = 0;
+        self.text_location.preferred_grapheme_idx = 0;
     }
     fn move_to_first_non_whitespace(&mut self) {
         self.text_location.grapheme_idx = self.buffer.first_non_whitespace_grapheme(self.text_location.line_idx);
+        self.text_location.preferred_grapheme_idx = self.text_location.grapheme_idx;
     }
     fn move_to_end_of_line(&mut self) {
         self.text_location.grapheme_idx = self.buffer.grapheme_count(self.text_location.line_idx);
+        self.text_location.preferred_grapheme_idx = self.text_location.grapheme_idx;
     }
     fn move_to_buffer_start(&mut self) {
         self.text_location.line_idx = 0;
         self.text_location.grapheme_idx = 0;
+        self.text_location.preferred_grapheme_idx = 0;
     }
     fn move_to_buffer_end(&mut self) {
         self.text_location.line_idx = self.buffer.height().saturating_sub(1);
@@ -419,7 +427,7 @@ impl View {
     // Doesn't trigger scrolling.
     fn snap_to_valid_grapheme(&mut self) {
         self.text_location.grapheme_idx = min(
-            self.text_location.grapheme_idx,
+            self.text_location.preferred_grapheme_idx,
             self.buffer.grapheme_count(self.text_location.line_idx),
         );
     }
