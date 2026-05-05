@@ -119,8 +119,13 @@ impl View {
     }
 
     pub fn get_selected_text(&self) -> Option<String> {
-        self.get_selection()
-            .map(|(start, end)| self.buffer.get_range(start, end))
+        self.get_selection().map(|(start, end)| {
+            let mut text = self.buffer.get_range(start, end);
+            if start.grapheme_idx == 0 && end.grapheme_idx == 0 {
+                text.push('\n');
+            }
+            text
+        })
     }
 
     pub fn get_current_character(&self) -> String {
@@ -341,7 +346,14 @@ impl View {
     // region: Text editing
     fn insert_newline(&mut self) {
         self.buffer.insert_newline(self.text_location);
-        self.handle_move_command(Move::Right);
+        let grapheme_count = self.buffer.grapheme_count(self.text_location.line_idx);
+        if self.text_location.grapheme_idx < grapheme_count {
+            self.handle_move_command(Move::Right);
+        } else {
+            // If already at EOL, buffer split happens; move to next line start.
+            self.text_location.line_idx = self.text_location.line_idx.saturating_add(1);
+            self.text_location.grapheme_idx = 0;
+        }
         self.set_needs_redraw(true);
     }
     fn delete_backward(&mut self) {

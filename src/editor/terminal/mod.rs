@@ -1,7 +1,7 @@
 mod attribute;
 use crate::prelude::*;
 use attribute::Attribute;
-use crossterm::cursor::{Hide, MoveTo, Show};
+use crossterm::cursor::{Hide, MoveTo, SetCursorStyle, Show};
 use crossterm::style::{
     Attribute::{Reset, Reverse},
     Print, ResetColor, SetBackgroundColor, SetForegroundColor,
@@ -82,6 +82,10 @@ impl Terminal {
     }
     pub fn show_caret() -> Result<(), Error> {
         Self::queue_command(Show)?;
+        Ok(())
+    }
+    pub fn set_cursor_style(style: SetCursorStyle) -> Result<(), Error> {
+        Self::queue_command(style)?;
         Ok(())
     }
     pub fn disable_line_wrap() -> Result<(), Error> {

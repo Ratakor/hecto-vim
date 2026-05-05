@@ -1,8 +1,8 @@
 use crate::prelude::*;
-use crossterm::event::{
+use crossterm::{event::{
     poll, read, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEvent,
     MouseEventKind,
-};
+},cursor::SetCursorStyle};
 use std::{
     env,
     io::Error,
@@ -284,26 +284,22 @@ impl Editor {
                     EditorMode::Normal => {
                         match (key_event.code, key_event.modifiers) {
                             (KeyCode::Char('i'), KeyModifiers::NONE) => {
-                                self.mode = EditorMode::Insert;
-                                self.move_left_on_escape = false;
+                                self.enter_insert_mode(false);
                             }
                             (KeyCode::Char('a'), KeyModifiers::NONE) => {
                                 self.process_command(Command::Move(Move::Right));
-                                self.mode = EditorMode::Insert;
-                                self.move_left_on_escape = true;
+                                self.enter_insert_mode(true);
                             }
                             (KeyCode::Char('o'), KeyModifiers::NONE) => {
                                 self.process_command(Command::Move(Move::EndOfLine));
                                 self.process_command(Command::Edit(Edit::InsertNewline));
-                                self.mode = EditorMode::Insert;
-                                self.move_left_on_escape = false;
+                                self.enter_insert_mode(false);
                             }
                             (KeyCode::Char('O'), KeyModifiers::SHIFT) | (KeyCode::Char('O'), KeyModifiers::NONE) => {
                                 self.process_command(Command::Move(Move::StartOfLine));
                                 self.process_command(Command::Edit(Edit::InsertNewline));
                                 self.process_command(Command::Move(Move::Up));
-                                self.mode = EditorMode::Insert;
-                                self.move_left_on_escape = false;
+                                self.enter_insert_mode(false);
                             }
                             (KeyCode::Char(':'), KeyModifiers::NONE) => {
                                 self.set_prompt(PromptType::Command);
@@ -461,6 +457,7 @@ impl Editor {
                     EditorMode::Insert => {
                         if key_event.code == KeyCode::Esc {
                             self.mode = EditorMode::Normal;
+                            let _ = Terminal::set_cursor_style(SetCursorStyle::SteadyBlock);
                             if self.move_left_on_escape {
                                 self.process_command(Command::Move(Move::Left));
                                 self.move_left_on_escape = false;
@@ -484,6 +481,12 @@ impl Editor {
         }
     }
 
+    fn enter_insert_mode(&mut self, move_left_on_escape: bool) {
+        self.mode = EditorMode::Insert;
+        let _ = Terminal::set_cursor_style(SetCursorStyle::SteadyBar);
+        self.move_left_on_escape = move_left_on_escape;
+    }
+
     fn handle_mouse_event(&mut self, event: MouseEvent) {
         let MouseEvent {
             kind, column, row, ..
@@ -498,6 +501,7 @@ impl Editor {
                     self.view.move_to_position(mouse_pos);
                     self.view.clear_selection();
                     self.mode = EditorMode::Normal;
+                    let _ = Terminal::set_cursor_style(SetCursorStyle::SteadyBlock);
                 }
             }
             MouseEventKind::Drag(MouseButton::Left) => {
