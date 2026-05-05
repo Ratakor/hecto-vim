@@ -11,4 +11,3 @@ pub use size::Size;
 mod location;
 pub use location::Location;
 pub const NAME: &str = env!("CARGO_PKG_NAME");
-pub const VERSION: &str = env!("CARGO_PKG_VERSION");

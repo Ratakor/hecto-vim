@@ -7,14 +7,26 @@ use std::fs::{read_to_string, File};
 use std::io::Error;
 use std::io::Write;
 use std::ops::Range;
+use std::cmp::min;
 
-#[derive(Default)]
 pub struct Buffer {
     lines: Vec<Line>,
     file_info: FileInfo,
     dirty: bool,
     undo_stack: Vec<Vec<Line>>,
     redo_stack: Vec<Vec<Line>>,
+}
+
+impl Default for Buffer {
+    fn default() -> Self {
+        Self {
+            lines: vec![Line::default()],
+            file_info: FileInfo::default(),
+            dirty: false,
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
+        }
+    }
 }
 
 impl Buffer {
@@ -76,7 +88,7 @@ impl Buffer {
         highlighter: &Highlighter,
     ) -> Option<AnnotatedString> {
         self.lines.get(line_idx).map(|line| {
-            line.get_annotated_visible_substr(range, Some(&highlighter.get_annotations(line_idx)))
+            line.get_annotated_visible_substr(range, Some(&highlighter.get_annotations(line_idx, line)))
         })
     }
 
@@ -192,9 +204,6 @@ impl Buffer {
         Ok(())
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.lines.is_empty()
-    }
     pub fn as_string(&self) -> String {
         self.lines
             .iter()
@@ -210,6 +219,9 @@ impl Buffer {
     }
     pub fn insert_char(&mut self, character: char, at: Location) {
         self.push_undo();
+        self.insert_char_no_undo(character, at);
+    }
+    fn insert_char_no_undo(&mut self, character: char, at: Location) {
         debug_assert!(at.line_idx <= self.height());
         if at.line_idx == self.height() {
             self.lines.push(Line::from(&character.to_string()));
@@ -244,6 +256,9 @@ impl Buffer {
     }
     pub fn insert_newline(&mut self, at: Location) {
         self.push_undo();
+        self.insert_newline_no_undo(at);
+    }
+    fn insert_newline_no_undo(&mut self, at: Location) {
         if at.line_idx == self.height() {
             self.lines.push(Line::default());
             self.dirty = true;
@@ -252,5 +267,83 @@ impl Buffer {
             self.lines.insert(at.line_idx.saturating_add(1), new);
             self.dirty = true;
         }
+    }
+
+    pub fn get_range(&self, start: Location, end: Location) -> String {
+        let (start, end) = if start <= end { (start, end) } else { (end, start) };
+        let mut result = Vec::new();
+        for line_idx in start.line_idx..=end.line_idx {
+            if let Some(line) = self.lines.get(line_idx) {
+                let start_g = if line_idx == start.line_idx {
+                    start.grapheme_idx
+                } else {
+                    0
+                };
+                let end_g = if line_idx == end.line_idx {
+                    end.grapheme_idx.saturating_add(1)
+                } else {
+                    line.grapheme_count()
+                };
+                result.push(line.get_substring(start_g..end_g));
+            }
+        }
+        result.join("\n")
+    }
+
+    pub fn delete_range(&mut self, start: Location, end: Location) {
+        self.push_undo();
+        let (start, end) = if start <= end { (start, end) } else { (end, start) };
+
+        if start.line_idx == end.line_idx {
+            if let Some(line) = self.lines.get_mut(start.line_idx) {
+                let count = end.grapheme_idx.saturating_add(1).saturating_sub(start.grapheme_idx);
+                for _ in 0..count {
+                    line.delete(start.grapheme_idx);
+                }
+                self.dirty = true;
+            }
+            return;
+        }
+
+        // Multiple lines
+        if let Some(line) = self.lines.get_mut(start.line_idx) {
+            while line.grapheme_count() > start.grapheme_idx {
+                line.delete(start.grapheme_idx);
+            }
+        }
+
+        if let Some(last_line) = self.lines.get(end.line_idx) {
+            let mut remaining = last_line.clone();
+            for _ in 0..end.grapheme_idx.saturating_add(1) {
+                remaining.delete(0);
+            }
+            if let Some(first_line) = self.lines.get_mut(start.line_idx) {
+                first_line.append(&remaining);
+            }
+        }
+
+        let height = self.height();
+        let end_to_remove = min(end.line_idx, height.saturating_sub(1));
+        for _ in start.line_idx..end_to_remove {
+            self.lines.remove(start.line_idx.saturating_add(1));
+        }
+        self.dirty = true;
+    }
+
+    pub fn insert_string(&mut self, string: &str, at: Location) {
+        self.push_undo();
+        let mut current_at = at;
+        for (i, line_str) in string.lines().enumerate() {
+            if i > 0 {
+                self.insert_newline_no_undo(current_at);
+                current_at.line_idx = current_at.line_idx.saturating_add(1);
+                current_at.grapheme_idx = 0;
+            }
+            for character in line_str.chars() {
+                self.insert_char_no_undo(character, current_at);
+                current_at.grapheme_idx = current_at.grapheme_idx.saturating_add(1);
+            }
+        }
+        self.dirty = true;
     }
 }

@@ -20,4 +20,5 @@ pub enum AnnotationType {
     Boolean,
     Macro,
     Attribute,
+    Selection,
 }

@@ -160,6 +160,18 @@ impl Line {
         result
     }
 
+    pub fn get_substring(&self, range: Range<GraphemeIdx>) -> String {
+        let start = min(range.start, self.grapheme_count());
+        let end = min(range.end, self.grapheme_count());
+        if start >= end {
+            return String::new();
+        }
+        self.fragments[start..end]
+            .iter()
+            .map(|f| f.grapheme.as_str())
+            .collect()
+    }
+
     pub fn grapheme_count(&self) -> GraphemeIdx {
         self.fragments.len()
     }
@@ -243,24 +255,11 @@ impl Line {
             .iter()
             .position(|fragment| fragment.start >= byte_idx)
     }
-    fn grapheme_idx_to_byte_idx(&self, grapheme_idx: GraphemeIdx) -> ByteIdx {
-        debug_assert!(grapheme_idx <= self.grapheme_count());
-        if grapheme_idx == 0 || self.grapheme_count() == 0 {
-            return 0;
+    pub fn grapheme_idx_to_byte_idx(&self, grapheme_idx: GraphemeIdx) -> ByteIdx {
+        if grapheme_idx >= self.grapheme_count() {
+            return self.string.len();
         }
-        self.fragments.get(grapheme_idx).map_or_else(
-            || {
-                #[cfg(debug_assertions)]
-                {
-                    panic!("Fragment not found for grapheme index: {grapheme_idx:?}");
-                }
-                #[cfg(not(debug_assertions))]
-                {
-                    0
-                }
-            },
-            |fragment| fragment.start,
-        )
+        self.fragments.get(grapheme_idx).map_or(0, |fragment| fragment.start)
     }
     pub fn search_forward(
         &self,

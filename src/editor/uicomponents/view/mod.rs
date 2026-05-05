@@ -1,4 +1,5 @@
 use std::{cmp::min, io::Error};
+use unicode_segmentation::UnicodeSegmentation;
 
 use crate::editor::RowIdx;
 use crate::prelude::*;
@@ -17,15 +18,32 @@ use fileinfo::FileInfo;
 mod searchinfo;
 use searchinfo::SearchInfo;
 
-#[derive(Default)]
 pub struct View {
     buffer: Buffer,
     needs_redraw: bool,
     size: Size,
     text_location: Location,
+    selection_start: Option<Location>,
     scroll_offset: Position,
     search_info: Option<SearchInfo>,
     syntax_highlighter: Option<Box<dyn SyntaxHighlighter>>,
+    syntax_enabled: bool,
+}
+
+impl Default for View {
+    fn default() -> Self {
+        Self {
+            buffer: Buffer::default(),
+            needs_redraw: true,
+            size: Size::default(),
+            text_location: Location::default(),
+            selection_start: None,
+            scroll_offset: Position::default(),
+            search_info: None,
+            syntax_highlighter: None,
+            syntax_enabled: false,
+        }
+    }
 }
 
 impl View {
@@ -40,6 +58,75 @@ impl View {
             file_type: file_info.get_file_type(),
             mode,
         }
+    }
+
+    pub fn start_selection(&mut self) {
+        self.selection_start = Some(self.text_location);
+        self.set_needs_redraw(true);
+    }
+
+    pub fn select_line(&mut self) {
+        let line_idx = self.text_location.line_idx;
+        let count = self.buffer.grapheme_count(line_idx);
+
+        if self.selection_start.is_none() {
+            self.selection_start = Some(Location {
+                line_idx,
+                grapheme_idx: 0,
+                preferred_grapheme_idx: 0,
+            });
+        } else if let Some(ref mut start) = self.selection_start {
+            start.grapheme_idx = 0;
+        }
+
+        self.text_location.grapheme_idx = count.saturating_sub(1);
+        self.text_location.preferred_grapheme_idx = self.text_location.grapheme_idx;
+        self.set_needs_redraw(true);
+    }
+
+    pub fn clear_selection(&mut self) {
+        if self.selection_start.is_some() {
+            self.selection_start = None;
+            self.set_needs_redraw(true);
+        }
+    }
+
+    pub fn get_selection(&self) -> Option<(Location, Location)> {
+        self.selection_start.map(|start| (start, self.text_location))
+    }
+
+    pub fn get_selected_text(&self) -> Option<String> {
+        self.get_selection()
+            .map(|(start, end)| self.buffer.get_range(start, end))
+    }
+
+    pub fn get_current_character(&self) -> String {
+        self.buffer.get_range(self.text_location, self.text_location)
+    }
+
+    pub fn delete_selection(&mut self) {
+        if let Some((start, end)) = self.get_selection() {
+            self.buffer.delete_range(start, end);
+            self.text_location = if start <= end { start } else { end };
+            self.selection_start = None;
+            self.set_needs_redraw(true);
+        }
+    }
+
+    pub fn paste(&mut self, text: &str) {
+        if text.is_empty() {
+            return;
+        }
+        self.buffer.insert_string(text, self.text_location);
+        for _ in 0..text.grapheme_indices(true).count() {
+            self.handle_move_command(Move::Right);
+        }
+        self.set_needs_redraw(true);
+    }
+
+    pub fn toggle_syntax(&mut self) {
+        self.syntax_enabled = !self.syntax_enabled;
+        self.set_needs_redraw(true);
     }
 
     pub const fn is_file_loaded(&self) -> bool {
@@ -179,7 +266,7 @@ impl View {
     }
     pub fn handle_move_command(&mut self, command: Move) {
         let Size { height, .. } = self.size;
-        let old_line_idx = self.text_location.line_idx;
+        let old_location = self.text_location;
         // This match moves the positon, but does not check for all boundaries.
         // The final boundarline checking happens after the match statement.
         match command {
@@ -200,7 +287,7 @@ impl View {
             Move::BufferStart => self.move_to_buffer_start(),
             Move::BufferEnd => self.move_to_buffer_end(),
         }
-        if old_line_idx != self.text_location.line_idx {
+        if old_location.line_idx != self.text_location.line_idx || (self.selection_start.is_some() && old_location.grapheme_idx != self.text_location.grapheme_idx) {
             self.set_needs_redraw(true);
         }
         self.scroll_text_location_into_view();
@@ -213,15 +300,15 @@ impl View {
             .saturating_sub(gutter_width)
             .saturating_add(self.scroll_offset.col);
         let row = position.row.saturating_add(self.scroll_offset.row);
-        let old_line_idx = self.text_location.line_idx;
+        let old_location = self.text_location;
         self.text_location.line_idx = row;
         self.snap_to_valid_line();
-        if old_line_idx != self.text_location.line_idx {
-            self.set_needs_redraw(true);
-        }
         self.text_location.grapheme_idx = self.buffer.grapheme_at_width(self.text_location.line_idx, col);
         self.text_location.preferred_grapheme_idx = self.text_location.grapheme_idx;
         self.snap_to_valid_grapheme();
+        if old_location.line_idx != self.text_location.line_idx || (self.selection_start.is_some() && old_location.grapheme_idx != self.text_location.grapheme_idx) {
+            self.set_needs_redraw(true);
+        }
         self.scroll_text_location_into_view();
     }
 
@@ -259,25 +346,7 @@ impl View {
 
     pub fn gutter_width(&self) -> usize {
         let total_lines = self.buffer.height();
-        if total_lines == 0 {
-            0
-        } else {
-            total_lines.to_string().len().max(3).saturating_add(1)
-        }
-    }
-
-    fn build_welcome_message(width: usize) -> String {
-        if width == 0 {
-            return String::new();
-        }
-        let welcome_message = format!("{NAME} editor -- version {VERSION}");
-        let len = welcome_message.len();
-        let remaining_width = width.saturating_sub(1);
-        // hide the welcome message if it doesn't fit entirely.
-        if remaining_width < len {
-            return "~".to_string();
-        }
-        format!("{:<1}{:^remaining_width$}", "~", welcome_message)
+        total_lines.to_string().len().max(3).saturating_add(1)
     }
     // endregion
 
@@ -361,6 +430,7 @@ impl View {
 
     fn move_up(&mut self, step: usize) {
         self.text_location.line_idx = self.text_location.line_idx.saturating_sub(step);
+        self.snap_to_valid_line();
         self.snap_to_valid_grapheme();
     }
     fn move_down(&mut self, step: usize) {
@@ -449,7 +519,7 @@ impl View {
     // Ensures self.location.line_idx points to a valid line index by snapping it to the bottom most line if appropriate.
     // Doesn't trigger scrolling.
     fn snap_to_valid_line(&mut self) {
-        self.text_location.line_idx = min(self.text_location.line_idx, self.buffer.height());
+        self.text_location.line_idx = min(self.text_location.line_idx, self.buffer.height().saturating_sub(1));
     }
 
     // endregion
@@ -473,7 +543,6 @@ impl UIComponent for View {
         let gutter_width = self.gutter_width();
         let usable_width = width.saturating_sub(gutter_width);
         let end_y = origin_row.saturating_add(height);
-        let top_third = height.div_ceil(3);
         let scroll_top = self.scroll_offset.row;
 
         let query = self
@@ -481,10 +550,19 @@ impl UIComponent for View {
             .as_ref()
             .and_then(|search_info| search_info.query.as_deref());
         let selected_match = query.is_some().then_some(self.text_location);
+        let selection = self
+            .selection_start
+            .map(|start| (start, self.text_location));
+        let syntax_highlighter = if self.syntax_enabled {
+            self.syntax_highlighter.as_deref_mut()
+        } else {
+            None
+        };
         let mut highlighter = Highlighter::new(
             query,
             selected_match,
-            self.syntax_highlighter.as_deref_mut(),
+            selection,
+            syntax_highlighter,
         );
 
         for current_row in origin_row..end_y {
@@ -539,12 +617,6 @@ impl UIComponent for View {
                     .get_highlighted_substring(line_idx, left..right, &highlighter)
             {
                 Terminal::print_annotated_row_at(current_row, gutter_width, &annotated_string)?;
-            } else if current_row == top_third && self.buffer.is_empty() {
-                Terminal::print_row_at(
-                    current_row,
-                    gutter_width,
-                    &Self::build_welcome_message(usable_width),
-                )?;
             } else {
                 Terminal::print_row_at(current_row, gutter_width, "")?;
             }

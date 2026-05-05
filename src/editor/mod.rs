@@ -41,6 +41,7 @@ pub enum EditorMode {
     #[default]
     Normal,
     Insert,
+    Visual,
     Goto,
 }
 
@@ -49,6 +50,7 @@ impl std::fmt::Display for EditorMode {
         match self {
             Self::Normal => write!(f, "NORMAL"),
             Self::Insert => write!(f, "INSERT"),
+            Self::Visual => write!(f, "VISUAL"),
             Self::Goto => write!(f, "GOTO"),
         }
     }
@@ -82,6 +84,7 @@ pub struct Editor {
     title: String,
     quit_times: u8,
     move_left_on_escape: bool,
+    clipboard: String,
 }
 
 impl Editor {
@@ -268,8 +271,24 @@ impl Editor {
                             (KeyCode::Char('l'), KeyModifiers::NONE) => {
                                 self.process_command(Command::Move(Move::Right));
                             }
+                            (KeyCode::Char('y'), KeyModifiers::NONE) => {
+                                self.clipboard = self.view.get_current_character();
+                                self.update_message("Character copied to clipboard.");
+                            }
+                            (KeyCode::Char('v'), KeyModifiers::NONE) => {
+                                self.mode = EditorMode::Visual;
+                                self.view.start_selection();
+                            }
+                            (KeyCode::Char('x'), KeyModifiers::NONE) => {
+                                self.view.select_line();
+                                self.mode = EditorMode::Visual;
+                            }
                             (KeyCode::Char('d'), KeyModifiers::NONE) => {
                                 self.process_command(Command::Edit(Edit::Delete));
+                            }
+                            (KeyCode::Char('p'), KeyModifiers::NONE) => {
+                                let text = self.clipboard.clone();
+                                self.view.paste(&text);
                             }
                             (KeyCode::Char('u'), KeyModifiers::NONE) => {
                                 self.process_command(Command::Edit(Edit::Undo));
@@ -289,6 +308,56 @@ impl Editor {
                             _ => {
                                 if let Ok(command) = Command::try_from(event) {
                                     if !matches!(command, Command::Edit(_)) {
+                                        self.process_command(command);
+                                    }
+                                }
+                            }
+                        }
+                        return;
+                    }
+                    EditorMode::Visual => {
+                        match (key_event.code, key_event.modifiers) {
+                            (KeyCode::Char('v'), KeyModifiers::NONE) | (KeyCode::Esc, KeyModifiers::NONE) => {
+                                self.mode = EditorMode::Normal;
+                                self.view.clear_selection();
+                            }
+                            (KeyCode::Char('x'), KeyModifiers::NONE) => {
+                                self.view.select_line();
+                            }
+                            (KeyCode::Char('h'), KeyModifiers::NONE) => {
+                                self.process_command(Command::Move(Move::Left));
+                            }
+                            (KeyCode::Char('j'), KeyModifiers::NONE) => {
+                                self.process_command(Command::Move(Move::Down));
+                            }
+                            (KeyCode::Char('k'), KeyModifiers::NONE) => {
+                                self.process_command(Command::Move(Move::Up));
+                            }
+                            (KeyCode::Char('l'), KeyModifiers::NONE) => {
+                                self.process_command(Command::Move(Move::Right));
+                            }
+                            (KeyCode::Char(':'), KeyModifiers::NONE) => {
+                                self.set_prompt(PromptType::Command);
+                            }
+                            (KeyCode::Char('y'), KeyModifiers::NONE) => {
+                                if let Some(text) = self.view.get_selected_text() {
+                                    self.clipboard = text;
+                                    self.update_message("Text copied to clipboard.");
+                                }
+                                self.mode = EditorMode::Normal;
+                                self.view.clear_selection();
+                            }
+                            (KeyCode::Char('d'), KeyModifiers::NONE) => {
+                                if let Some(text) = self.view.get_selected_text() {
+                                    self.clipboard = text;
+                                }
+                                self.view.delete_selection();
+                                self.mode = EditorMode::Normal;
+                                self.view.clear_selection();
+                            }
+                            _ => {
+                                if let Ok(command) = Command::try_from(event) {
+                                    if let Command::Move(_) = command {
                                         self.process_command(command);
                                     }
                                 }
@@ -391,8 +460,14 @@ impl Editor {
 
         match command {
             Command::System(System::Resize(_)) => {}
-            Command::System(System::Dismiss) => self.update_message(""),
-            Command::Edit(edit_command) => self.view.handle_edit_command(edit_command),
+            Command::System(System::Dismiss) => {
+                self.view.clear_selection();
+                self.update_message("");
+            }
+            Command::Edit(edit_command) => {
+                self.view.clear_selection();
+                self.view.handle_edit_command(edit_command);
+            }
             Command::Move(move_command) => self.view.handle_move_command(move_command),
         }
     }
@@ -415,17 +490,32 @@ impl Editor {
     }
 
     fn handle_vim_command(&mut self, command: &str) {
-        match command {
+        let parts: Vec<&str> = command.split_whitespace().collect();
+        let cmd = parts.get(0).copied().unwrap_or("");
+        let arg = parts.get(1).copied();
+
+        match cmd {
             "q" => self.handle_quit_command(),
             "q!" => self.should_quit = true,
-            "w" => self.handle_save_command(),
+            "w" => {
+                if let Some(path) = arg {
+                    self.save(Some(path));
+                } else {
+                    self.handle_save_command();
+                }
+            }
+            "syntax" => self.view.toggle_syntax(),
             "wq" | "x" => {
-                self.save(None);
+                if let Some(path) = arg {
+                    self.save(Some(path));
+                } else {
+                    self.save(None);
+                }
                 if !self.view.get_status(self.mode.to_string()).is_modified {
                     self.should_quit = true;
                 }
             }
-            _ => self.update_message(&format!("ERR: Unknown command: {command}")),
+            _ => self.update_message(&format!("ERR: Unknown command: {cmd}")),
         }
     }
 
