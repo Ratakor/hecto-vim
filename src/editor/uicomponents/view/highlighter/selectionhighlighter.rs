@@ -27,7 +27,7 @@ impl SelectionHighlighter {
         };
 
         let end_grapheme = if idx == self.end.line_idx {
-            self.end.grapheme_idx.saturating_add(1)
+            self.end.grapheme_idx
         } else {
             line.grapheme_count()
         };

@@ -65,13 +65,10 @@ impl View {
         self.set_needs_redraw(true);
     }
 
-    pub fn select_line(&mut self) {
-        let line_idx = self.text_location.line_idx;
-        let count = self.buffer.grapheme_count(line_idx);
-
+    pub fn select_line_down(&mut self) {
         if self.selection_start.is_none() {
             self.selection_start = Some(Location {
-                line_idx,
+                line_idx: self.text_location.line_idx,
                 grapheme_idx: 0,
                 preferred_grapheme_idx: 0,
             });
@@ -79,7 +76,33 @@ impl View {
             start.grapheme_idx = 0;
         }
 
-        self.text_location.grapheme_idx = count.saturating_sub(1);
+        self.text_location.line_idx = self.text_location.line_idx.saturating_add(1);
+        self.text_location.grapheme_idx = 0;
+
+        if self.text_location.line_idx >= self.buffer.height() {
+            self.text_location.line_idx = self.buffer.height().saturating_sub(1);
+            self.text_location.grapheme_idx = self.buffer.grapheme_count(self.text_location.line_idx);
+        }
+
+        self.text_location.preferred_grapheme_idx = self.text_location.grapheme_idx;
+        self.set_needs_redraw(true);
+    }
+
+    pub fn select_line_up(&mut self) {
+        if self.selection_start.is_none() {
+            let mut start = self.text_location;
+            start.line_idx = start.line_idx.saturating_add(1);
+            start.grapheme_idx = 0;
+            if start.line_idx >= self.buffer.height() {
+                start.line_idx = self.buffer.height().saturating_sub(1);
+                start.grapheme_idx = self.buffer.grapheme_count(start.line_idx);
+            }
+            self.selection_start = Some(start);
+            self.text_location.grapheme_idx = 0;
+        } else {
+            self.text_location.line_idx = self.text_location.line_idx.saturating_sub(1);
+            self.text_location.grapheme_idx = 0;
+        }
         self.text_location.preferred_grapheme_idx = self.text_location.grapheme_idx;
         self.set_needs_redraw(true);
     }
@@ -101,7 +124,9 @@ impl View {
     }
 
     pub fn get_current_character(&self) -> String {
-        self.buffer.get_range(self.text_location, self.text_location)
+        let mut end = self.text_location;
+        end.grapheme_idx = end.grapheme_idx.saturating_add(1);
+        self.buffer.get_range(self.text_location, end)
     }
 
     pub fn delete_selection(&mut self) {

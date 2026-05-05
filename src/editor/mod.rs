@@ -332,7 +332,11 @@ impl Editor {
                                 self.view.start_selection();
                             }
                             (KeyCode::Char('x'), KeyModifiers::NONE) => {
-                                self.view.select_line();
+                                self.view.select_line_down();
+                                self.mode = EditorMode::Visual;
+                            }
+                            (KeyCode::Char('X'), KeyModifiers::SHIFT) | (KeyCode::Char('X'), KeyModifiers::NONE) => {
+                                self.view.select_line_up();
                                 self.mode = EditorMode::Visual;
                             }
                             (KeyCode::Char('d'), KeyModifiers::NONE) => {
@@ -377,7 +381,10 @@ impl Editor {
                                 self.view.clear_selection();
                             }
                             (KeyCode::Char('x'), KeyModifiers::NONE) => {
-                                self.view.select_line();
+                                self.view.select_line_down();
+                            }
+                            (KeyCode::Char('X'), KeyModifiers::SHIFT) | (KeyCode::Char('X'), KeyModifiers::NONE) => {
+                                self.view.select_line_up();
                             }
                             (KeyCode::Char('h'), KeyModifiers::NONE) => {
                                 self.process_command(Command::Move(Move::Left));

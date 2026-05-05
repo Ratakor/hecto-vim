@@ -280,7 +280,7 @@ impl Buffer {
                     0
                 };
                 let end_g = if line_idx == end.line_idx {
-                    end.grapheme_idx.saturating_add(1)
+                    end.grapheme_idx
                 } else {
                     line.grapheme_count()
                 };
@@ -296,7 +296,7 @@ impl Buffer {
 
         if start.line_idx == end.line_idx {
             if let Some(line) = self.lines.get_mut(start.line_idx) {
-                let count = end.grapheme_idx.saturating_add(1).saturating_sub(start.grapheme_idx);
+                let count = end.grapheme_idx.saturating_sub(start.grapheme_idx);
                 for _ in 0..count {
                     line.delete(start.grapheme_idx);
                 }
@@ -314,7 +314,7 @@ impl Buffer {
 
         if let Some(last_line) = self.lines.get(end.line_idx) {
             let mut remaining = last_line.clone();
-            for _ in 0..end.grapheme_idx.saturating_add(1) {
+            for _ in 0..end.grapheme_idx {
                 remaining.delete(0);
             }
             if let Some(first_line) = self.lines.get_mut(start.line_idx) {
