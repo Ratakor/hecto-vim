@@ -2,28 +2,21 @@ use super::super::super::{Annotation, AnnotationType, FileType, Line};
 use crate::prelude::*;
 mod syntaxhighlighter;
 use searchresulthighlighter::SearchResultHighlighter;
-use syntaxhighlighter::SyntaxHighlighter;
+pub use syntaxhighlighter::SyntaxHighlighter;
 mod searchresulthighlighter;
 mod treesitterhighlighter;
 use treesitterhighlighter::TreeSitterHighlighter;
 
-fn create_syntax_highlighter(
-    file_type: FileType,
-    source_code: &str,
-) -> Option<Box<dyn SyntaxHighlighter>> {
+pub fn create_syntax_highlighter(file_type: FileType) -> Option<Box<dyn SyntaxHighlighter>> {
     match file_type {
-        FileType::Rust => {
-            let mut highlighter = TreeSitterHighlighter::new();
-            highlighter.update_tree(source_code);
-            Some(Box::new(highlighter))
-        }
+        FileType::Rust => Some(Box::<TreeSitterHighlighter>::default()),
         FileType::Text => None,
     }
 }
 
 #[derive(Default)]
 pub struct Highlighter<'a> {
-    syntax_highlighter: Option<Box<dyn SyntaxHighlighter>>,
+    syntax_highlighter: Option<&'a mut (dyn SyntaxHighlighter + 'static)>,
     search_result_highlighter: Option<SearchResultHighlighter<'a>>,
 }
 
@@ -31,13 +24,12 @@ impl<'a> Highlighter<'a> {
     pub fn new(
         matched_word: Option<&'a str>,
         selected_match: Option<Location>,
-        file_type: FileType,
-        source_code: &str,
+        syntax_highlighter: Option<&'a mut (dyn SyntaxHighlighter + 'static)>,
     ) -> Self {
         let search_result_highlighter = matched_word
             .map(|matched_word| SearchResultHighlighter::new(matched_word, selected_match));
         Self {
-            syntax_highlighter: create_syntax_highlighter(file_type, source_code),
+            syntax_highlighter,
             search_result_highlighter,
         }
     }

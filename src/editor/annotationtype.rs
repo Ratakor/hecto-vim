@@ -9,5 +9,15 @@ pub enum AnnotationType {
     Char,
     LifetimeSpecifier,
     Comment,
-    String
+    String,
+    Variable,
+    Function,
+    Method,
+    Operator,
+    Punctuation,
+    Property,
+    Constant,
+    Boolean,
+    Macro,
+    Attribute,
 }

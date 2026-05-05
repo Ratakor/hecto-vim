@@ -13,7 +13,7 @@ use buffer::Buffer;
 mod searchdirection;
 use searchdirection::SearchDirection;
 mod highlighter;
-use highlighter::Highlighter;
+use highlighter::{create_syntax_highlighter, Highlighter, SyntaxHighlighter};
 mod fileinfo;
 use fileinfo::FileInfo;
 mod searchinfo;
@@ -27,6 +27,7 @@ pub struct View {
     text_location: Location,
     scroll_offset: Position,
     search_info: Option<SearchInfo>,
+    syntax_highlighter: Option<Box<dyn SyntaxHighlighter>>,
 }
 
 impl View {
@@ -43,6 +44,12 @@ impl View {
 
     pub const fn is_file_loaded(&self) -> bool {
         self.buffer.is_file_loaded()
+    }
+
+    fn update_syntax_highlighter(&mut self) {
+        if let Some(highlighter) = &mut self.syntax_highlighter {
+            highlighter.update(&self.buffer.as_string());
+        }
     }
 
     // region: search
@@ -124,6 +131,8 @@ impl View {
     pub fn load(&mut self, file_name: &str) -> Result<(), Error> {
         let buffer = Buffer::load(file_name)?;
         self.buffer = buffer;
+        self.syntax_highlighter = create_syntax_highlighter(self.buffer.get_file_info().get_file_type());
+        self.update_syntax_highlighter();
         self.set_needs_redraw(true);
         Ok(())
     }
@@ -135,6 +144,8 @@ impl View {
     }
     pub fn save_as(&mut self, file_name: &str) -> Result<(), Error> {
         self.buffer.save_as(file_name)?;
+        self.syntax_highlighter = create_syntax_highlighter(self.buffer.get_file_info().get_file_type());
+        self.update_syntax_highlighter();
         self.set_needs_redraw(true);
         Ok(())
     }
@@ -149,6 +160,7 @@ impl View {
             Edit::DeleteBackward => self.delete_backward(),
             Edit::InsertNewline => self.insert_newline(),
         }
+        self.update_syntax_highlighter();
     }
     pub fn handle_move_command(&mut self, command: Move) {
         let Size { height, .. } = self.size;
@@ -408,8 +420,7 @@ impl UIComponent for View {
         let mut highlighter = Highlighter::new(
             query,
             selected_match,
-            self.buffer.get_file_info().get_file_type(),
-            &self.buffer.as_string(),
+            self.syntax_highlighter.as_deref_mut(),
         );
 
         for current_row in origin_row..end_y {

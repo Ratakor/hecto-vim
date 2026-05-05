@@ -26,22 +26,59 @@ impl TreeSitterHighlighter {
     }
 
     fn map_capture_to_annotation_type(capture: &str) -> Option<AnnotationType> {
-        match capture {
-            "comment" => Some(AnnotationType::Comment),
-            "string" | "string.fragment" => Some(AnnotationType::String),
-            "constant.numeric" | "number" | "integer" | "float" => Some(AnnotationType::Number),
-            "keyword" | "keyword.control" | "keyword.function" | "keyword.operator" | "keyword.return" | "keyword.storage" => Some(AnnotationType::Keyword),
-            "type" | "type.builtin" | "primitive" => Some(AnnotationType::Type),
-            "constant" | "boolean" | "variable.builtin" | "constant.builtin" => Some(AnnotationType::KnownValue),
-            "char" | "character" => Some(AnnotationType::Char),
-            "attribute" | "lifetime" | "label" => Some(AnnotationType::LifetimeSpecifier),
-            _ => None,
+        if capture.starts_with("comment") {
+            return Some(AnnotationType::Comment);
         }
-    }
+        if capture.starts_with("string") {
+            return Some(AnnotationType::String);
+        }
+        if capture.starts_with("keyword") {
+            return Some(AnnotationType::Keyword);
+        }
+        if capture.starts_with("type") || capture.contains("primitive") {
+            return Some(AnnotationType::Type);
+        }
+        if capture.contains("number") || capture.contains("integer") || capture.contains("float") {
+            return Some(AnnotationType::Number);
+        }
+        if capture.starts_with("constant") {
+            return Some(AnnotationType::Constant);
+        }
+        if capture.starts_with("variable") || capture.contains("parameter") {
+            if capture.contains("builtin") {
+                return Some(AnnotationType::KnownValue);
+            }
+            return Some(AnnotationType::Variable);
+        }
+        if capture.starts_with("function") || capture.contains("method") {
+            return Some(AnnotationType::Function);
+        }
+        if capture.starts_with("punctuation") {
+            return Some(AnnotationType::Punctuation);
+        }
+        if capture.starts_with("operator") {
+            return Some(AnnotationType::Operator);
+        }
+        if capture.starts_with("property") {
+            return Some(AnnotationType::Property);
+        }
+        if capture.starts_with("boolean") {
+            return Some(AnnotationType::Boolean);
+        }
+        if capture.contains("char") || capture.contains("character") {
+            return Some(AnnotationType::Char);
+        }
+        if capture.starts_with("attribute") {
+            return Some(AnnotationType::Attribute);
+        }
+        if capture.contains("macro") {
+            return Some(AnnotationType::Macro);
+        }
+        if capture.contains("lifetime") || capture.contains("label") {
+            return Some(AnnotationType::LifetimeSpecifier);
+        }
 
-    pub fn update_tree(&mut self, source_code: &str) {
-        self.tree = self.parser.parse(source_code, self.tree.as_ref());
-        self.update_annotations(source_code);
+        None
     }
 
     fn update_annotations(&mut self, source_code: &str) {
@@ -112,11 +149,15 @@ impl TreeSitterHighlighter {
 }
 
 impl SyntaxHighlighter for TreeSitterHighlighter {
-    fn highlight(&mut self, _idx: LineIdx, _line: &Line) {
-    }
+    fn highlight(&mut self, _idx: LineIdx, _line: &Line) {}
 
     fn get_annotations(&self, idx: LineIdx) -> Option<&Vec<Annotation>> {
         self.annotations.get(idx)
+    }
+
+    fn update(&mut self, source_code: &str) {
+        self.tree = self.parser.parse(source_code, self.tree.as_ref());
+        self.update_annotations(source_code);
     }
 }
 
@@ -134,16 +175,14 @@ mod tests {
     fn test_rust_highlighting() {
         let mut highlighter = TreeSitterHighlighter::new();
         let source = "fn main() {\n    let x = 123;\n}";
-        highlighter.update_tree(source);
+        highlighter.update(source);
 
-        for i in 0..3 {
-            if let Some(annotations) = highlighter.get_annotations(i) {
-                println!("Line {}: {:?}", i, annotations);
-            }
-        }
+        let annotations_0 = highlighter.get_annotations(0).unwrap();
+        assert!(annotations_0.iter().any(|a| a.annotation_type == AnnotationType::Keyword));
+        assert!(annotations_0.iter().any(|a| a.annotation_type == AnnotationType::Function));
 
         let annotations_1 = highlighter.get_annotations(1).unwrap();
         assert!(annotations_1.iter().any(|a| a.annotation_type == AnnotationType::Keyword));
-        assert!(annotations_1.iter().any(|a| a.annotation_type == AnnotationType::KnownValue));
+        assert!(annotations_1.iter().any(|a| a.annotation_type == AnnotationType::Constant));
     }
 }
