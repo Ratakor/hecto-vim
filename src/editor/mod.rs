@@ -24,18 +24,26 @@ use terminal::Terminal;
 use uicomponents::{CommandBar, MessageBar, StatusBar, UIComponent, View};
 
 use self::command::{
-    Command::{self, Edit, Move, System},
-    Edit::InsertNewline,
-    Move::{Down, Left, Right, Up},
-    System::{Dismiss, Quit, Resize, Save, Search},
+    Command,
+    Edit,
+    Move,
+    System,
 };
 
 const QUIT_TIMES: u8 = 3;
+
+#[derive(Eq, PartialEq, Default, Clone, Copy)]
+pub enum EditorMode {
+    #[default]
+    Normal,
+    Insert,
+}
 
 #[derive(Eq, PartialEq, Default)]
 enum PromptType {
     Search,
     Save,
+    Command,
     #[default]
     None,
 }
@@ -54,6 +62,7 @@ pub struct Editor {
     message_bar: MessageBar,
     command_bar: CommandBar,
     prompt_type: PromptType,
+    mode: EditorMode,
     terminal_size: Size,
     title: String,
     quit_times: u8,
@@ -73,7 +82,7 @@ impl Editor {
         let mut editor = Self::default();
         let size = Terminal::size().unwrap_or_default();
         editor.handle_resize_command(size);
-        editor.update_message("HELP: Ctrl-F = find | Ctrl-S = save | Ctrl-Q = quit");
+        editor.update_message("HELP: i = insert | :w = save | :q = quit | / = search");
 
         let args: Vec<String> = env::args().collect();
         if let Some(file_name) = args.get(1) {
@@ -162,7 +171,62 @@ impl Editor {
             _ => false,
         };
 
-        if should_process {
+        if !should_process {
+            return;
+        }
+
+        if let Event::Resize(width_u16, height_u16) = event {
+            self.process_command(Command::System(System::Resize(Size {
+                height: height_u16 as usize,
+                width: width_u16 as usize,
+            })));
+            return;
+        }
+
+        if let Event::Key(key_event) = event {
+            if !self.in_prompt() {
+                match self.mode {
+                    EditorMode::Normal => {
+                        match (key_event.code, key_event.modifiers) {
+                            (crossterm::event::KeyCode::Char('i'), crossterm::event::KeyModifiers::NONE) => {
+                                self.mode = EditorMode::Insert;
+                                self.update_message("-- INSERT --");
+                            }
+                            (crossterm::event::KeyCode::Char(':'), crossterm::event::KeyModifiers::NONE) => {
+                                self.set_prompt(PromptType::Command);
+                            }
+                            (crossterm::event::KeyCode::Char('/'), crossterm::event::KeyModifiers::NONE) => {
+                                self.set_prompt(PromptType::Search);
+                            }
+                            (crossterm::event::KeyCode::Char('h'), crossterm::event::KeyModifiers::NONE) => {
+                                self.process_command(Command::Move(Move::Left));
+                            }
+                            (crossterm::event::KeyCode::Char('j'), crossterm::event::KeyModifiers::NONE) => {
+                                self.process_command(Command::Move(Move::Down));
+                            }
+                            (crossterm::event::KeyCode::Char('k'), crossterm::event::KeyModifiers::NONE) => {
+                                self.process_command(Command::Move(Move::Up));
+                            }
+                            (crossterm::event::KeyCode::Char('l'), crossterm::event::KeyModifiers::NONE) => {
+                                self.process_command(Command::Move(Move::Right));
+                            }
+                            _ => {
+                                if let Ok(command) = Command::try_from(event) {
+                                    self.process_command(command);
+                                }
+                            }
+                        }
+                        return;
+                    }
+                    EditorMode::Insert => {
+                        if key_event.code == crossterm::event::KeyCode::Esc {
+                            self.mode = EditorMode::Normal;
+                            self.update_message("");
+                            return;
+                        }
+                    }
+                }
+            }
             if let Ok(command) = Command::try_from(event) {
                 self.process_command(command);
             }
@@ -173,30 +237,64 @@ impl Editor {
     // region command handling
 
     fn process_command(&mut self, command: Command) {
-        if let System(Resize(size)) = command {
+        if let Command::System(System::Resize(size)) = command {
             self.handle_resize_command(size);
             return;
         }
         match self.prompt_type {
             PromptType::Search => self.process_command_during_search(command),
             PromptType::Save => self.process_command_during_save(command),
+            PromptType::Command => self.process_command_during_command(command),
             PromptType::None => self.process_command_no_prompt(command),
         }
     }
 
     fn process_command_no_prompt(&mut self, command: Command) {
-        if matches!(command, System(Quit)) {
+        if matches!(command, Command::System(System::Quit)) {
             self.handle_quit_command();
             return;
         }
         self.reset_quit_times(); // Reset quit times for all other commands
 
         match command {
-            System(Quit | Resize(_) | Dismiss) => {} // Quit and Resize already handled above, others not applicable
-            System(Search) => self.set_prompt(PromptType::Search),
-            System(Save) => self.handle_save_command(),
-            Edit(edit_command) => self.view.handle_edit_command(edit_command),
-            Move(move_command) => self.view.handle_move_command(move_command),
+            Command::System(System::Quit | System::Resize(_)) => {} // Quit and Resize already handled above, others not applicable
+            Command::System(System::Dismiss) => self.update_message(""),
+            Command::System(System::Search) => self.set_prompt(PromptType::Search),
+            Command::System(System::Save) => self.handle_save_command(),
+            Command::Edit(edit_command) => self.view.handle_edit_command(edit_command),
+            Command::Move(move_command) => self.view.handle_move_command(move_command),
+        }
+    }
+
+    fn process_command_during_command(&mut self, command: Command) {
+        match command {
+            Command::System(System::Dismiss) => {
+                self.set_prompt(PromptType::None);
+            }
+            Command::Edit(Edit::InsertNewline) => {
+                let command_str = self.command_bar.value();
+                self.handle_vim_command(&command_str);
+                if !self.should_quit {
+                    self.set_prompt(PromptType::None);
+                }
+            }
+            Command::Edit(edit_command) => self.command_bar.handle_edit_command(edit_command),
+            _ => {}
+        }
+    }
+
+    fn handle_vim_command(&mut self, command: &str) {
+        match command {
+            "q" => self.handle_quit_command(),
+            "q!" => self.should_quit = true,
+            "w" => self.handle_save_command(),
+            "wq" | "x" => {
+                self.save(None);
+                if !self.view.get_status().is_modified {
+                    self.should_quit = true;
+                }
+            }
+            _ => self.update_message(&format!("ERR: Unknown command: {command}")),
         }
     }
 
@@ -228,7 +326,7 @@ impl Editor {
             self.should_quit = true;
         } else if self.view.get_status().is_modified {
             self.update_message(&format!(
-                "WARNING! File has unsaved changes. Press Ctrl-Q {} more times to quit.",
+                "WARNING! File has unsaved changes. Type :q {} more times to quit.",
                 QUIT_TIMES - self.quit_times - 1
             ));
 
@@ -254,17 +352,17 @@ impl Editor {
     }
     fn process_command_during_save(&mut self, command: Command) {
         match command {
-            System(Quit | Resize(_) | Search | Save) | Move(_) => {} // Not applicable during save, Resize already handled at this stage
-            System(Dismiss) => {
+            Command::System(System::Quit | System::Resize(_) | System::Search | System::Save) | Command::Move(_) => {} // Not applicable during save, Resize already handled at this stage
+            Command::System(System::Dismiss) => {
                 self.set_prompt(PromptType::None);
                 self.update_message("Save aborted.");
             }
-            Edit(InsertNewline) => {
+            Command::Edit(Edit::InsertNewline) => {
                 let file_name = self.command_bar.value();
                 self.save(Some(&file_name));
                 self.set_prompt(PromptType::None);
             }
-            Edit(edit_command) => self.command_bar.handle_edit_command(edit_command),
+            Command::Edit(edit_command) => self.command_bar.handle_edit_command(edit_command),
         }
     }
     fn save(&mut self, file_name: Option<&str>) {
@@ -285,22 +383,22 @@ impl Editor {
     // region search command & prompt handling
     fn process_command_during_search(&mut self, command: Command) {
         match command {
-            System(Dismiss) => {
+            Command::System(System::Dismiss) => {
                 self.set_prompt(PromptType::None);
                 self.view.dismiss_search();
             }
-            Edit(InsertNewline) => {
+            Command::Edit(Edit::InsertNewline) => {
                 self.set_prompt(PromptType::None);
                 self.view.exit_search();
             }
-            Edit(edit_command) => {
+            Command::Edit(edit_command) => {
                 self.command_bar.handle_edit_command(edit_command);
                 let query = self.command_bar.value();
                 self.view.search(&query);
             }
-            Move(Right | Down) => self.view.search_next(),
-            Move(Up | Left) => self.view.search_prev(),
-            System(Quit | Resize(_) | Search | Save) | Move(_) => {} // Not applicable during save, Resize already handled at this stage
+            Command::Move(Move::Right | Move::Down) => self.view.search_next(),
+            Command::Move(Move::Up | Move::Left) => self.view.search_prev(),
+            Command::System(System::Quit | System::Resize(_) | System::Search | System::Save) | Command::Move(_) => {} // Not applicable during save, Resize already handled at this stage
         }
     }
     // endregion
@@ -320,6 +418,7 @@ impl Editor {
         match prompt_type {
             PromptType::None => self.message_bar.set_needs_redraw(true), //Ensures the message bar is properly painted during the next redraw cycle
             PromptType::Save => self.command_bar.set_prompt("Save as: "),
+            PromptType::Command => self.command_bar.set_prompt(":"),
             PromptType::Search => {
                 self.view.enter_search();
                 self.command_bar

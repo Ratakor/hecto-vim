@@ -1,6 +1,6 @@
 use crate::prelude::*;
 use crossterm::event::{
-    KeyCode::{self, Char},
+    KeyCode,
     KeyEvent, KeyModifiers,
 };
 
@@ -20,14 +20,7 @@ impl TryFrom<KeyEvent> for System {
             code, modifiers, ..
         } = event;
 
-        if modifiers == KeyModifiers::CONTROL {
-            match code {
-                Char('q') => Ok(Self::Quit),
-                Char('s') => Ok(Self::Save),
-                Char('f') => Ok(Self::Search),
-                _ => Err(format!("Unsupported CONTROL+{code:?} combination")),
-            }
-        } else if modifiers == KeyModifiers::NONE && matches!(code, KeyCode::Esc) {
+        if modifiers == KeyModifiers::NONE && matches!(code, KeyCode::Esc) {
             Ok(Self::Dismiss)
         } else {
             Err(format!(
