@@ -397,11 +397,9 @@ impl Editor {
                     self.process_command(Command::Move(Move::Right));
                 }
                 (KeyCode::Char('y'), KeyModifiers::NONE) => {
-                    if self.mode == EditorMode::Visual {
-                        if let Some(text) = self.view.get_selected_text() {
-                            self.clipboard = text;
-                            self.update_message("Text copied to clipboard.");
-                        }
+                    if let Some(text) = self.view.get_selected_text() {
+                        self.clipboard = text;
+                        self.update_message("Text copied to clipboard.");
                     } else {
                         self.clipboard = self.view.get_current_character();
                         self.update_message("Character copied to clipboard.");
@@ -413,25 +411,22 @@ impl Editor {
                         self.view.clear_selection();
                     } else {
                         self.mode = EditorMode::Visual;
-                        self.view.start_selection();
+                        if self.view.get_selection().is_none() {
+                            self.view.start_selection();
+                        }
                     }
                 }
                 (KeyCode::Char('x'), KeyModifiers::NONE) => {
                     self.view.select_line_down();
-                    self.mode = EditorMode::Visual;
                 }
                 (KeyCode::Char('X'), KeyModifiers::SHIFT | KeyModifiers::NONE) => {
                     self.view.select_line_up();
-                    self.mode = EditorMode::Visual;
                 }
                 (KeyCode::Char('d'), KeyModifiers::NONE) => {
-                    if self.mode == EditorMode::Visual {
-                        if let Some(text) = self.view.get_selected_text() {
-                            self.clipboard = text;
-                        }
+                    if let Some(text) = self.view.get_selected_text() {
+                        self.clipboard = text;
                         self.view.delete_selection();
                         self.mode = EditorMode::Normal;
-                        self.view.clear_selection();
                     } else {
                         self.process_command(Command::Edit(Edit::Delete));
                     }
@@ -463,9 +458,9 @@ impl Editor {
                     self.mode = EditorMode::Help;
                 }
                 (KeyCode::Esc, KeyModifiers::NONE) => {
+                    self.view.clear_selection();
                     if self.mode == EditorMode::Visual {
                         self.mode = EditorMode::Normal;
-                        self.view.clear_selection();
                     }
                     self.update_message("");
                 }
@@ -632,7 +627,12 @@ impl Editor {
                 self.view.clear_selection();
                 self.view.handle_edit_command(edit_command);
             }
-            Command::Move(move_command) => self.view.handle_move_command(move_command),
+            Command::Move(move_command) => {
+                if self.mode == EditorMode::Normal {
+                    self.view.clear_selection();
+                }
+                self.view.handle_move_command(move_command);
+            }
         }
     }
 

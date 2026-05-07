@@ -3,8 +3,7 @@ use super::FileInfo;
 use super::Highlighter;
 use super::Line;
 use crate::prelude::*;
-use std::cmp::min;
-use std::fs::{read_to_string, File};
+use std::fs::{File, read_to_string};
 use std::io::Error;
 use std::io::Write;
 use std::ops::Range;
@@ -239,11 +238,11 @@ impl Buffer {
                 // clippy::indexing_slicing: We checked for existence of this line in the surrounding if statment
                 #[allow(clippy::indexing_slicing)]
                 self.lines[at.line_idx].append(&next_line);
-                } else if at.grapheme_idx < line.grapheme_count() {
+            } else if at.grapheme_idx < line.grapheme_count() {
                 // clippy::indexing_slicing: We checked for existence of this line in the surrounding if statment
                 #[allow(clippy::indexing_slicing)]
                 self.lines[at.line_idx].delete(at.grapheme_idx);
-                }
+            }
         } else {
             // Undo was pushed but no line was found. We should pop it back to keep redo stack clean if we want but for now just leave it.
             // Actually, if we pushed undo and nothing happened, we might want to pop it.
@@ -306,7 +305,8 @@ impl Buffer {
                 if line_idx == end.line_idx && end.grapheme_idx >= line.grapheme_count() {
                     result.push(String::new());
                 }
-            } else if line_idx == end.line_idx && end.grapheme_idx == 0 && line_idx == self.height() {
+            } else if line_idx == end.line_idx && end.grapheme_idx == 0 && line_idx == self.height()
+            {
                 result.push(String::new());
             }
         }
@@ -333,7 +333,8 @@ impl Buffer {
                     suffix.push_str(&self.lines[lines_to_remove_until]);
                 }
             } else {
-                suffix = last_line.get_substring(end.grapheme_idx.saturating_add(1)..last_line.grapheme_count());
+                suffix = last_line
+                    .get_substring(end.grapheme_idx.saturating_add(1)..last_line.grapheme_count());
             }
         }
 
@@ -342,7 +343,7 @@ impl Buffer {
                 first_line.delete(start.grapheme_idx);
             }
             first_line.append_char(' '); // Temporarily add a char to avoid being empty if needed? No, rebuild_fragments handles empty.
-            first_line.delete_last(); // Remove the temp char. 
+            first_line.delete_last(); // Remove the temp char.
             // Actually, just push_str and rebuild.
             first_line.append(&Line::from(&suffix)); // Use append for convenience
         }
