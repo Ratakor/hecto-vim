@@ -121,12 +121,12 @@ impl View {
     }
 
     pub fn get_selected_text(&self) -> Option<String> {
-        self.get_selection().map(|(start, end)| {
-            let mut text = self.buffer.get_range(start, end);
-            if start.grapheme_idx == 0 && end.grapheme_idx == 0 {
-                text.push('\n');
+        self.get_selection().map(|(mut start, mut end)| {
+            if start > end {
+                std::mem::swap(&mut start, &mut end);
             }
-            text
+            end.grapheme_idx = end.grapheme_idx.saturating_add(1);
+            self.buffer.get_range(start, end)
         })
     }
 

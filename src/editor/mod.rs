@@ -1,4 +1,5 @@
 use crate::prelude::*;
+use arboard::Clipboard;
 use crossterm::{
     cursor::SetCursorStyle,
     event::{
@@ -40,7 +41,6 @@ pub enum EditorMode {
     Normal,
     Insert,
     Visual,
-    Goto,
     Help,
 }
 
@@ -50,7 +50,6 @@ impl std::fmt::Display for EditorMode {
             Self::Normal => write!(f, "NORMAL"),
             Self::Insert => write!(f, "INSERT"),
             Self::Visual => write!(f, "VISUAL"),
-            Self::Goto => write!(f, "GOTO"),
             Self::Help => write!(f, "HELP"),
         }
     }
@@ -71,7 +70,6 @@ impl PromptType {
     }
 }
 
-#[derive(Default)]
 pub struct Editor {
     should_quit: bool,
     view: View,
@@ -85,6 +83,8 @@ pub struct Editor {
     quit_times: u8,
     move_left_on_escape: bool,
     clipboard: String,
+    system_clipboard: Clipboard,
+    command_buffer: Vec<KeyEvent>,
 }
 
 impl Editor {
@@ -101,9 +101,24 @@ impl Editor {
         }));
         Terminal::initialize()?;
 
-        let mut editor = Self::default();
-        editor.move_left_on_escape = false;
         let size = Terminal::size().unwrap_or_default();
+        let mut editor = Self {
+            should_quit: false,
+            view: View::default(),
+            status_bar: StatusBar::default(),
+            message_bar: MessageBar::default(),
+            command_bar: CommandBar::default(),
+            prompt_type: PromptType::default(),
+            mode: EditorMode::default(),
+            terminal_size: size,
+            title: String::new(),
+            quit_times: 0,
+            move_left_on_escape: false,
+            clipboard: String::new(),
+            system_clipboard: Clipboard::new()
+                .map_err(|e| Error::new(std::io::ErrorKind::Other, e))?,
+            command_buffer: Vec::new(),
+        };
         editor.handle_resize_command(size);
 
         let args: Vec<String> = env::args().collect();
@@ -195,11 +210,26 @@ impl Editor {
     }
 
     fn refresh_status(&mut self) {
+        let command_buffer = self
+            .command_buffer
+            .iter()
+            .map(|key| self.key_event_to_string(*key))
+            .collect::<String>();
+        self.message_bar.update_command_buffer(&command_buffer);
+        
         let status = self.view.get_status(self.mode.to_string());
         let title = format!("{} - {NAME}", status.file_name);
         self.status_bar.update_status(status);
         if title != self.title && matches!(Terminal::set_title(&title), Ok(())) {
             self.title = title;
+        }
+    }
+
+    fn key_event_to_string(&self, key: KeyEvent) -> String {
+        match key.code {
+            KeyCode::Char(' ') => "<space>".to_string(),
+            KeyCode::Char(c) => c.to_string(),
+            _ => String::new(),
         }
     }
 
@@ -224,12 +254,14 @@ impl Editor {
             "  o, O       : Open line below/above + Insert",
             "  u, U       : Undo, Redo",
             "  p          : Paste clipboard",
+            "  SPC p/P    : Paste from system clipboard",
             "  d          : Delete char (Normal) / Selection (Visual)",
             "",
             "[Selection & Visual]",
             "  v          : Toggle Visual mode",
             "  x          : Select whole line (enters Visual)",
             "  y          : Yank char (Normal) / Selection (Visual)",
+            "  SPC y      : Yank to system clipboard",
             "",
             "[Search & Commands]",
             "  /          : Search",
@@ -277,183 +309,11 @@ impl Editor {
         if let Event::Key(key_event) = event {
             if !self.in_prompt() {
                 match self.mode {
-                    EditorMode::Normal => {
-                        match (key_event.code, key_event.modifiers) {
-                            (KeyCode::Char('i'), KeyModifiers::NONE) => {
-                                self.enter_insert_mode(false);
-                            }
-                            (KeyCode::Char('a'), KeyModifiers::NONE) => {
-                                self.process_command(Command::Move(Move::Right));
-                                self.enter_insert_mode(true);
-                            }
-                            (KeyCode::Char('o'), KeyModifiers::NONE) => {
-                                self.process_command(Command::Move(Move::EndOfLine));
-                                self.process_command(Command::Edit(Edit::InsertNewline));
-                                self.enter_insert_mode(false);
-                            }
-                            (KeyCode::Char('O'), KeyModifiers::SHIFT | KeyModifiers::NONE) => {
-                                self.process_command(Command::Move(Move::StartOfLine));
-                                self.process_command(Command::Edit(Edit::InsertNewline));
-                                self.process_command(Command::Move(Move::Up));
-                                self.enter_insert_mode(false);
-                            }
-                            (KeyCode::Char(':'), KeyModifiers::NONE) => {
-                                self.set_prompt(PromptType::Command);
-                            }
-                            (KeyCode::Char('/'), KeyModifiers::NONE) => {
-                                self.set_prompt(PromptType::Search);
-                            }
-                            (KeyCode::Char('h'), KeyModifiers::NONE) => {
-                                self.process_command(Command::Move(Move::Left));
-                            }
-                            (KeyCode::Char('j'), KeyModifiers::NONE) => {
-                                self.process_command(Command::Move(Move::Down));
-                            }
-                            (KeyCode::Char('k'), KeyModifiers::NONE) => {
-                                self.process_command(Command::Move(Move::Up));
-                            }
-                            (KeyCode::Char('l'), KeyModifiers::NONE) => {
-                                self.process_command(Command::Move(Move::Right));
-                            }
-                            (KeyCode::Char('y'), KeyModifiers::NONE) => {
-                                self.clipboard = self.view.get_current_character();
-                                self.update_message("Character copied to clipboard.");
-                            }
-                            (KeyCode::Char('v'), KeyModifiers::NONE) => {
-                                self.mode = EditorMode::Visual;
-                                self.view.start_selection();
-                            }
-                            (KeyCode::Char('x'), KeyModifiers::NONE) => {
-                                self.view.select_line_down();
-                                self.mode = EditorMode::Visual;
-                            }
-                            (KeyCode::Char('X'), KeyModifiers::SHIFT | KeyModifiers::NONE) => {
-                                self.view.select_line_up();
-                                self.mode = EditorMode::Visual;
-                            }
-                            (KeyCode::Char('d'), KeyModifiers::NONE) => {
-                                self.process_command(Command::Edit(Edit::Delete));
-                            }
-                            (KeyCode::Char('p'), KeyModifiers::NONE) => {
-                                self.view.paste(&self.clipboard);
-                            }
-                            (KeyCode::Char('P'), KeyModifiers::SHIFT | KeyModifiers::NONE) => {
-                                self.view.paste_backward(&self.clipboard);
-                            }
-                            (KeyCode::Char('J'), KeyModifiers::SHIFT | KeyModifiers::NONE) => {
-                                self.view.concat_lines();
-                            }
-                            (KeyCode::Char('u'), KeyModifiers::NONE) => {
-                                self.process_command(Command::Edit(Edit::Undo));
-                            }
-                            (KeyCode::Char('U'), KeyModifiers::SHIFT | KeyModifiers::NONE) => {
-                                self.process_command(Command::Edit(Edit::Redo));
-                            }
-                            (KeyCode::Char('u'), KeyModifiers::CONTROL) => {
-                                self.process_command(Command::Move(Move::HalfPageUp));
-                            }
-                            (KeyCode::Char('d'), KeyModifiers::CONTROL) => {
-                                self.process_command(Command::Move(Move::HalfPageDown));
-                            }
-                            (KeyCode::Char('g'), KeyModifiers::NONE) => {
-                                self.mode = EditorMode::Goto;
-                            }
-                            (KeyCode::Char('?'), KeyModifiers::NONE) => {
-                                self.mode = EditorMode::Help;
-                            }
-                            _ => {
-                                if let Ok(command) = Command::try_from(event) {
-                                    if !matches!(command, Command::Edit(_)) {
-                                        self.process_command(command);
-                                    }
-                                }
-                            }
+                    EditorMode::Normal | EditorMode::Visual => {
+                        self.command_buffer.push(key_event);
+                        if self.handle_key_sequence() {
+                            self.command_buffer.clear();
                         }
-                        return;
-                    }
-                    EditorMode::Visual => {
-                        match (key_event.code, key_event.modifiers) {
-                            (KeyCode::Char('v'), KeyModifiers::NONE)
-                            | (KeyCode::Esc, KeyModifiers::NONE) => {
-                                self.mode = EditorMode::Normal;
-                                self.view.clear_selection();
-                            }
-                            (KeyCode::Char('x'), KeyModifiers::NONE) => {
-                                self.view.select_line_down();
-                            }
-                            (KeyCode::Char('X'), KeyModifiers::SHIFT | KeyModifiers::NONE) => {
-                                self.view.select_line_up();
-                            }
-                            (KeyCode::Char('h'), KeyModifiers::NONE) => {
-                                self.process_command(Command::Move(Move::Left));
-                            }
-                            (KeyCode::Char('j'), KeyModifiers::NONE) => {
-                                self.process_command(Command::Move(Move::Down));
-                            }
-                            (KeyCode::Char('k'), KeyModifiers::NONE) => {
-                                self.process_command(Command::Move(Move::Up));
-                            }
-                            (KeyCode::Char('l'), KeyModifiers::NONE) => {
-                                self.process_command(Command::Move(Move::Right));
-                            }
-                            (KeyCode::Char(':'), KeyModifiers::NONE) => {
-                                self.set_prompt(PromptType::Command);
-                            }
-                            (KeyCode::Char('y'), KeyModifiers::NONE) => {
-                                if let Some(text) = self.view.get_selected_text() {
-                                    self.clipboard = text;
-                                    self.update_message("Text copied to clipboard.");
-                                }
-                                self.mode = EditorMode::Normal;
-                                self.view.clear_selection();
-                            }
-                            (KeyCode::Char('d'), KeyModifiers::NONE) => {
-                                if let Some(text) = self.view.get_selected_text() {
-                                    self.clipboard = text;
-                                }
-                                self.view.delete_selection();
-                                self.mode = EditorMode::Normal;
-                                self.view.clear_selection();
-                            }
-                            _ => {
-                                if let Ok(command) = Command::try_from(event) {
-                                    if let Command::Move(_) = command {
-                                        self.process_command(command);
-                                    }
-                                }
-                            }
-                        }
-                        return;
-                    }
-                    EditorMode::Goto => {
-                        match (key_event.code, key_event.modifiers) {
-                            (KeyCode::Char('g'), KeyModifiers::NONE) => {
-                                self.process_command(Command::Move(Move::BufferStart));
-                            }
-                            (KeyCode::Char('e'), KeyModifiers::NONE) => {
-                                self.process_command(Command::Move(Move::BufferEnd));
-                            }
-                            (KeyCode::Char('h'), KeyModifiers::NONE) => {
-                                self.process_command(Command::Move(Move::StartOfLine));
-                            }
-                            (KeyCode::Char('l'), KeyModifiers::NONE) => {
-                                self.process_command(Command::Move(Move::EndOfLine));
-                            }
-                            (KeyCode::Char('s'), KeyModifiers::NONE) => {
-                                self.process_command(Command::Move(Move::FirstNonWhitespace));
-                            }
-                            (KeyCode::Char('t'), KeyModifiers::NONE) => {
-                                self.process_command(Command::Move(Move::ViewTop));
-                            }
-                            (KeyCode::Char('b'), KeyModifiers::NONE) => {
-                                self.process_command(Command::Move(Move::ViewBottom));
-                            }
-                            (KeyCode::Char('c'), KeyModifiers::NONE) => {
-                                self.process_command(Command::Move(Move::ViewCenter));
-                            }
-                            _ => {}
-                        }
-                        self.mode = EditorMode::Normal;
                         return;
                     }
                     EditorMode::Insert => {
@@ -481,6 +341,231 @@ impl Editor {
                 self.process_command(command);
             }
         }
+    }
+
+    fn handle_key_sequence(&mut self) -> bool {
+        if self.command_buffer.is_empty() {
+            return true;
+        }
+
+        let first_key = self.command_buffer[0];
+        let first_code = first_key.code;
+        let first_mod = first_key.modifiers;
+
+        if self.command_buffer.len() == 1 {
+            match (first_code, first_mod) {
+                (KeyCode::Char('g'), KeyModifiers::NONE) => {
+                    return false;
+                }
+                (KeyCode::Char(' '), KeyModifiers::NONE) => {
+                    return false;
+                }
+                (KeyCode::Char('i'), KeyModifiers::NONE) => {
+                    self.enter_insert_mode(false);
+                }
+                (KeyCode::Char('a'), KeyModifiers::NONE) => {
+                    self.process_command(Command::Move(Move::Right));
+                    self.enter_insert_mode(true);
+                }
+                (KeyCode::Char('o'), KeyModifiers::NONE) => {
+                    self.process_command(Command::Move(Move::EndOfLine));
+                    self.process_command(Command::Edit(Edit::InsertNewline));
+                    self.enter_insert_mode(false);
+                }
+                (KeyCode::Char('O'), KeyModifiers::SHIFT | KeyModifiers::NONE) => {
+                    self.process_command(Command::Move(Move::StartOfLine));
+                    self.process_command(Command::Edit(Edit::InsertNewline));
+                    self.process_command(Command::Move(Move::Up));
+                    self.enter_insert_mode(false);
+                }
+                (KeyCode::Char(':'), KeyModifiers::NONE) => {
+                    self.set_prompt(PromptType::Command);
+                }
+                (KeyCode::Char('/'), KeyModifiers::NONE) => {
+                    self.set_prompt(PromptType::Search);
+                }
+                (KeyCode::Char('h'), KeyModifiers::NONE) => {
+                    self.process_command(Command::Move(Move::Left));
+                }
+                (KeyCode::Char('j'), KeyModifiers::NONE) => {
+                    self.process_command(Command::Move(Move::Down));
+                }
+                (KeyCode::Char('k'), KeyModifiers::NONE) => {
+                    self.process_command(Command::Move(Move::Up));
+                }
+                (KeyCode::Char('l'), KeyModifiers::NONE) => {
+                    self.process_command(Command::Move(Move::Right));
+                }
+                (KeyCode::Char('y'), KeyModifiers::NONE) => {
+                    if self.mode == EditorMode::Visual {
+                        if let Some(text) = self.view.get_selected_text() {
+                            self.clipboard = text;
+                            self.update_message("Text copied to clipboard.");
+                        }
+                        self.mode = EditorMode::Normal;
+                        self.view.clear_selection();
+                    } else {
+                        self.clipboard = self.view.get_current_character();
+                        self.update_message("Character copied to clipboard.");
+                    }
+                }
+                (KeyCode::Char('v'), KeyModifiers::NONE) => {
+                    if self.mode == EditorMode::Visual {
+                        self.mode = EditorMode::Normal;
+                        self.view.clear_selection();
+                    } else {
+                        self.mode = EditorMode::Visual;
+                        self.view.start_selection();
+                    }
+                }
+                (KeyCode::Char('x'), KeyModifiers::NONE) => {
+                    self.view.select_line_down();
+                    self.mode = EditorMode::Visual;
+                }
+                (KeyCode::Char('X'), KeyModifiers::SHIFT | KeyModifiers::NONE) => {
+                    self.view.select_line_up();
+                    self.mode = EditorMode::Visual;
+                }
+                (KeyCode::Char('d'), KeyModifiers::NONE) => {
+                    if self.mode == EditorMode::Visual {
+                        if let Some(text) = self.view.get_selected_text() {
+                            self.clipboard = text;
+                        }
+                        self.view.delete_selection();
+                        self.mode = EditorMode::Normal;
+                        self.view.clear_selection();
+                    } else {
+                        self.process_command(Command::Edit(Edit::Delete));
+                    }
+                }
+                (KeyCode::Char('p'), KeyModifiers::NONE) => {
+                    self.view.paste(&self.clipboard);
+                }
+                (KeyCode::Char('P'), KeyModifiers::SHIFT | KeyModifiers::NONE) => {
+                    self.view.paste_backward(&self.clipboard);
+                }
+                (KeyCode::Char('J'), KeyModifiers::SHIFT | KeyModifiers::NONE) => {
+                    self.view.concat_lines();
+                }
+                (KeyCode::Char('u'), KeyModifiers::NONE) => {
+                    self.process_command(Command::Edit(Edit::Undo));
+                }
+                (KeyCode::Char('U'), KeyModifiers::SHIFT | KeyModifiers::NONE) => {
+                    self.process_command(Command::Edit(Edit::Redo));
+                }
+                (KeyCode::Char('u'), KeyModifiers::CONTROL) => {
+                    self.process_command(Command::Move(Move::HalfPageUp));
+                }
+                (KeyCode::Char('d'), KeyModifiers::CONTROL) => {
+                    self.process_command(Command::Move(Move::HalfPageDown));
+                }
+                (KeyCode::Char('?'), KeyModifiers::NONE) => {
+                    self.mode = EditorMode::Help;
+                }
+                (KeyCode::Esc, KeyModifiers::NONE) => {
+                    if self.mode == EditorMode::Visual {
+                        self.mode = EditorMode::Normal;
+                        self.view.clear_selection();
+                    }
+                    self.update_message("");
+                }
+                _ => {
+                    if let Ok(command) = Command::try_from(Event::Key(first_key)) {
+                        self.process_command(command);
+                    }
+                }
+            }
+            return true;
+        }
+
+        if self.command_buffer.len() == 2 {
+            self.update_message("");
+            let second_key = self.command_buffer[1];
+            let second_code = second_key.code;
+            let second_mod = second_key.modifiers;
+
+            if second_code == KeyCode::Esc {
+                return true;
+            }
+
+            match (first_code, first_mod) {
+                (KeyCode::Char('g'), KeyModifiers::NONE) => match (second_code, second_mod) {
+                    (KeyCode::Char('g'), KeyModifiers::NONE) => {
+                        self.process_command(Command::Move(Move::BufferStart));
+                    }
+                    (KeyCode::Char('e'), KeyModifiers::NONE) => {
+                        self.process_command(Command::Move(Move::BufferEnd));
+                    }
+                    (KeyCode::Char('h'), KeyModifiers::NONE) => {
+                        self.process_command(Command::Move(Move::StartOfLine));
+                    }
+                    (KeyCode::Char('l'), KeyModifiers::NONE) => {
+                        self.process_command(Command::Move(Move::EndOfLine));
+                    }
+                    (KeyCode::Char('s'), KeyModifiers::NONE) => {
+                        self.process_command(Command::Move(Move::FirstNonWhitespace));
+                    }
+                    (KeyCode::Char('t'), KeyModifiers::NONE) => {
+                        self.process_command(Command::Move(Move::ViewTop));
+                    }
+                    (KeyCode::Char('b'), KeyModifiers::NONE) => {
+                        self.process_command(Command::Move(Move::ViewBottom));
+                    }
+                    (KeyCode::Char('c'), KeyModifiers::NONE) => {
+                        self.process_command(Command::Move(Move::ViewCenter));
+                    }
+                    _ => {
+                        // If unknown g- command, try to process second key as single command
+                        if let Ok(command) = Command::try_from(Event::Key(second_key)) {
+                            self.process_command(command);
+                        }
+                    }
+                },
+                (KeyCode::Char(' '), KeyModifiers::NONE) => match (second_code, second_mod) {
+                    (KeyCode::Char('y'), KeyModifiers::NONE) => {
+                        let text = if self.view.get_selection().is_some() {
+                            self.view.get_selected_text()
+                        } else {
+                            Some(self.view.get_current_character())
+                        };
+
+                        if let Some(text) = text {
+                            if let Err(e) = self.system_clipboard.set_text(text) {
+                                self.update_message(&format!("ERR: Clipboard error: {e}"));
+                            } else {
+                                if self.view.get_selection().is_some() {
+                                    self.update_message("Text copied to system clipboard.");
+                                    self.mode = EditorMode::Normal;
+                                    self.view.clear_selection();
+                                } else {
+                                    self.update_message("Character copied to system clipboard.");
+                                }
+                            }
+                        }
+                    }
+                    (KeyCode::Char('p'), KeyModifiers::NONE) => {
+                        if let Ok(text) = self.system_clipboard.get_text() {
+                            self.view.paste(&text);
+                        }
+                    }
+                    (KeyCode::Char('P'), KeyModifiers::SHIFT | KeyModifiers::NONE) => {
+                        if let Ok(text) = self.system_clipboard.get_text() {
+                            self.view.paste_backward(&text);
+                        }
+                    }
+                    _ => {
+                        // If unknown SPC- command, try to process second key as single command
+                        if let Ok(command) = Command::try_from(Event::Key(second_key)) {
+                            self.process_command(command);
+                        }
+                    }
+                },
+                _ => {}
+            }
+            return true;
+        }
+
+        true
     }
 
     fn enter_insert_mode(&mut self, move_left_on_escape: bool) {
