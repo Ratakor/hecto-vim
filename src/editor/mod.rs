@@ -29,7 +29,9 @@ use documentstatus::DocumentStatus;
 use filetype::FileType;
 use line::Line;
 use terminal::Terminal;
-use uicomponents::{CommandBar, MessageBar, StatusBar, UIComponent, View};
+use uicomponents::{
+    CommandBar, ContextMenu, ContextMenuAction, MessageBar, StatusBar, UIComponent, View,
+};
 
 use self::command::{Command, Edit, Move, System};
 
@@ -85,6 +87,7 @@ pub struct Editor {
     clipboard: String,
     system_clipboard: Clipboard,
     command_buffer: Vec<KeyEvent>,
+    context_menu: Option<ContextMenu>,
 }
 
 impl Editor {
@@ -118,6 +121,7 @@ impl Editor {
             system_clipboard: Clipboard::new()
                 .map_err(|e| Error::new(std::io::ErrorKind::Other, e))?,
             command_buffer: Vec::new(),
+            context_menu: None,
         };
         editor.handle_resize_command(size);
 
@@ -191,7 +195,14 @@ impl Editor {
                 .render(self.terminal_size.height.saturating_sub(2));
         }
         if self.terminal_size.height > 2 {
+            if self.context_menu.is_some() {
+                self.view.set_needs_redraw(true);
+            }
             self.view.render(0);
+        }
+        if let Some(menu) = &mut self.context_menu {
+            menu.set_needs_redraw(true);
+            menu.render(0);
         }
         let new_caret_pos = if self.in_prompt() {
             Position {
@@ -584,6 +595,50 @@ impl Editor {
             col: column as usize,
             row: row as usize,
         };
+
+        if let Some(menu) = &mut self.context_menu {
+            match kind {
+                MouseEventKind::Down(MouseButton::Left) => {
+                    if let Some(action) = menu.handle_click(mouse_pos) {
+                        match action {
+                            ContextMenuAction::Copy => {
+                                if let Some(text) = self.view.get_selected_text() {
+                                    self.clipboard = text.clone();
+                                    let _ = self.system_clipboard.set_text(text);
+                                    self.update_message("Text copied to clipboard.");
+                                } else {
+                                    let text = self.view.get_current_character();
+                                    self.clipboard = text.clone();
+                                    let _ = self.system_clipboard.set_text(text);
+                                    self.update_message("Character copied to clipboard.");
+                                }
+                            }
+                            ContextMenuAction::Paste => {
+                                self.view.move_to_position(menu.position());
+                                if let Ok(text) = self.system_clipboard.get_text() {
+                                    self.view.paste(&text);
+                                } else {
+                                    self.view.paste(&self.clipboard);
+                                }
+                            }                            ContextMenuAction::Undo => {
+                                self.process_command(Command::Edit(Edit::Undo));
+                            }
+                            ContextMenuAction::Redo => {
+                                self.process_command(Command::Edit(Edit::Redo));
+                            }
+                            }                    }
+                    self.context_menu = None;
+                    self.view.set_needs_redraw(true);
+                    return;
+                }
+                MouseEventKind::Moved => {
+                    menu.handle_mouse_move(mouse_pos);
+                    return;
+                }
+                _ => {}
+            }
+        }
+
         match kind {
             MouseEventKind::Down(MouseButton::Left) => {
                 if mouse_pos.row < self.terminal_size.height.saturating_sub(2) {
@@ -591,6 +646,19 @@ impl Editor {
                     self.view.clear_selection();
                     self.mode = EditorMode::Normal;
                     let _ = Terminal::set_cursor_style(SetCursorStyle::SteadyBlock);
+                }
+            }
+            MouseEventKind::Down(MouseButton::Right) => {
+                if self.context_menu.is_none() {
+                    self.context_menu = Some(ContextMenu::new(
+                        mouse_pos,
+                        self.terminal_size,
+                        self.view.can_undo(),
+                        self.view.can_redo(),
+                    ));
+                } else {
+                    self.context_menu = None;
+                    self.view.set_needs_redraw(true);
                 }
             }
             MouseEventKind::Drag(MouseButton::Left) => {

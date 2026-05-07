@@ -47,6 +47,12 @@ impl Default for View {
 }
 
 impl View {
+    pub fn can_undo(&self) -> bool {
+        self.buffer.can_undo()
+    }
+    pub fn can_redo(&self) -> bool {
+        self.buffer.can_redo()
+    }
     pub fn get_status(&self, mode: String) -> DocumentStatus {
         let file_info = self.buffer.get_file_info();
         DocumentStatus {

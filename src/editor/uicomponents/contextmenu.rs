@@ -1,0 +1,123 @@
+use crate::prelude::*;
+use crate::editor::Terminal;
+use super::UIComponent;
+use std::io::Error;
+use crossterm::style::Color;
+
+#[derive(Clone, Copy, PartialEq)]
+pub enum ContextMenuAction {
+    Copy,
+    Paste,
+    Undo,
+    Redo,
+}
+
+pub struct ContextMenu {
+    position: Position,
+    needs_redraw: bool,
+    size: Size,
+    hovered_action: Option<ContextMenuAction>,
+    available_actions: Vec<(ContextMenuAction, &'static str)>,
+}
+
+impl ContextMenu {
+    pub fn new(
+        mut position: Position,
+        terminal_size: Size,
+        can_undo: bool,
+        can_redo: bool,
+    ) -> Self {
+        let mut available_actions = vec![
+            (ContextMenuAction::Copy, "Copy   "),
+            (ContextMenuAction::Paste, "Paste  "),
+        ];
+        if can_undo {
+            available_actions.push((ContextMenuAction::Undo, "Undo   "));
+        }
+        if can_redo {
+            available_actions.push((ContextMenuAction::Redo, "Redo   "));
+        }
+
+        let size = Size {
+            width: 7,
+            height: available_actions.len(),
+        };
+
+        // Adjust position if it would go out of bounds
+        if position.col + size.width > terminal_size.width {
+            position.col = terminal_size.width.saturating_sub(size.width);
+        }
+        if position.row + size.height > terminal_size.height {
+            position.row = terminal_size.height.saturating_sub(size.height);
+        }
+
+        Self {
+            position,
+            needs_redraw: true,
+            size,
+            hovered_action: None,
+            available_actions,
+        }
+    }
+
+    pub fn handle_mouse_move(&mut self, mouse_pos: Position) {
+        let new_hover = self.action_at(mouse_pos);
+        if new_hover != self.hovered_action {
+            self.hovered_action = new_hover;
+            self.needs_redraw = true;
+        }
+    }
+
+    pub fn handle_click(&self, mouse_pos: Position) -> Option<ContextMenuAction> {
+        self.action_at(mouse_pos)
+    }
+
+    pub fn position(&self) -> Position {
+        self.position
+    }
+
+    fn action_at(&self, mouse_pos: Position) -> Option<ContextMenuAction> {
+        if mouse_pos.col >= self.position.col
+            && mouse_pos.col < self.position.col + self.size.width
+            && mouse_pos.row >= self.position.row
+            && mouse_pos.row < self.position.row + self.size.height
+        {
+            let relative_row = mouse_pos.row.saturating_sub(self.position.row);
+            if relative_row < self.available_actions.len() {
+                return Some(self.available_actions[relative_row].0);
+            }
+        }
+        None
+    }
+}
+
+impl UIComponent for ContextMenu {
+    fn set_needs_redraw(&mut self, value: bool) {
+        self.needs_redraw = value;
+    }
+
+    fn needs_redraw(&self) -> bool {
+        self.needs_redraw
+    }
+
+    fn set_size(&mut self, size: Size) {
+        self.size = size;
+    }
+
+    fn draw(&mut self, _origin_row: RowIdx) -> Result<(), Error> {
+        let col = self.position.col;
+        let row = self.position.row;
+
+        for (i, (action, label)) in self.available_actions.iter().enumerate() {
+            if self.hovered_action == Some(*action) {
+                Terminal::set_background_color(Color::Grey)?;
+            } else {
+                Terminal::set_background_color(Color::DarkGrey)?;
+            }
+            Terminal::print_row_at_no_clear(row + i, col, label)?;
+            Terminal::reset_attributes()?;
+        }
+
+        Ok(())
+    }
+}

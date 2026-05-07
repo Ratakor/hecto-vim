@@ -113,6 +113,11 @@ impl Terminal {
         Self::print(line_text)?;
         Ok(())
     }
+    pub fn print_row_at_no_clear(row: RowIdx, col: ColIdx, line_text: &str) -> Result<(), Error> {
+        Self::move_caret_to(Position { col, row })?;
+        Self::print(line_text)?;
+        Ok(())
+    }
     pub fn print_annotated_row_at(
         row: RowIdx,
         col: ColIdx,
@@ -145,6 +150,10 @@ impl Terminal {
     }
     pub fn set_foreground_color(color: crossterm::style::Color) -> Result<(), Error> {
         Self::queue_command(SetForegroundColor(color))?;
+        Ok(())
+    }
+    pub fn set_background_color(color: crossterm::style::Color) -> Result<(), Error> {
+        Self::queue_command(SetBackgroundColor(color))?;
         Ok(())
     }
     pub fn reset_attributes() -> Result<(), Error> {

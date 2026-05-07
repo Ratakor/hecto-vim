@@ -1,10 +1,11 @@
 mod commandbar;
+mod contextmenu;
 mod messagebar;
 mod statusbar;
 mod uicomponent;
-mod view;
-
+pub mod view;
 pub use commandbar::CommandBar;
+pub use contextmenu::{ContextMenu, ContextMenuAction};
 pub use messagebar::MessageBar;
 pub use statusbar::StatusBar;
 pub use uicomponent::UIComponent;
