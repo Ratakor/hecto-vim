@@ -248,6 +248,14 @@ impl Line {
         self.delete(self.grapheme_count().saturating_sub(1));
     }
 
+    pub fn trim_end(&mut self) {
+        self.string = self.string.trim_end().to_string();
+        self.rebuild_fragments();
+    }
+    pub fn trim_start(&mut self) {
+        self.string = self.string.trim_start().to_string();
+        self.rebuild_fragments();
+    }
     pub fn append(&mut self, other: &Self) {
         self.string.push_str(&other.string);
         self.rebuild_fragments();

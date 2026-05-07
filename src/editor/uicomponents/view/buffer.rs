@@ -320,7 +320,9 @@ impl Buffer {
             if line_idx >= self.lines.len() {
                 break;
             }
-            let next = self.lines.remove(line_idx);
+            let mut next = self.lines.remove(line_idx);
+            self.lines[start.line_idx].trim_end();
+            next.trim_start();
             self.lines[start.line_idx].append_char(' ');
             self.lines[start.line_idx].append(&next);
         }
