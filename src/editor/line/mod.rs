@@ -31,60 +31,59 @@ impl Line {
     }
 
     fn str_to_fragments(line_str: &str) -> Vec<TextFragment> {
-        line_str
-            .grapheme_indices(true)
-            .map(|(byte_idx, grapheme)| {
-                let (replacement, rendered_width) = Self::get_replacement_character(grapheme)
-                    .map_or_else(
-                        || {
-                            let unicode_width = grapheme.width();
-                            let rendered_width = match unicode_width {
-                                0 | 1 => GraphemeWidth::Half,
-                                _ => GraphemeWidth::Full,
-                            };
-                            (None, rendered_width)
-                        },
-                        |replacement| (Some(replacement), GraphemeWidth::Half),
-                    );
+        let mut fragments = Vec::new();
+        let mut current_col = 0;
+        for (byte_idx, grapheme) in line_str.grapheme_indices(true) {
+            let (replacement, rendered_width) =
+                Self::get_replacement_character(grapheme, current_col).map_or_else(
+                    || {
+                        let unicode_width = grapheme.width();
+                        let rendered_width = match unicode_width {
+                            0 | 1 => GraphemeWidth::Half,
+                            _ => GraphemeWidth::Full,
+                        };
+                        (None, rendered_width)
+                    },
+                    |replacement| {
+                        let rendered_width = GraphemeWidth::Custom(replacement.len());
+                        (Some(replacement), rendered_width)
+                    },
+                );
 
-                TextFragment {
-                    grapheme: grapheme.to_string(),
-                    rendered_width,
-                    replacement,
-                    start: byte_idx,
-                }
-            })
-            .collect()
+            fragments.push(TextFragment {
+                grapheme: grapheme.to_string(),
+                rendered_width,
+                replacement,
+                start: byte_idx,
+            });
+            current_col += usize::from(rendered_width);
+        }
+        fragments
     }
 
     fn rebuild_fragments(&mut self) {
         self.fragments = Self::str_to_fragments(&self.string);
     }
 
-    fn get_replacement_character(for_str: &str) -> Option<char> {
+    fn get_replacement_character(for_str: &str, col: ColIdx) -> Option<String> {
         let width = for_str.width();
         match for_str {
             " " => None,
-            "\t" => Some(' '),
-            _ if width > 0 && for_str.trim().is_empty() => Some('␣'),
+            "\t" => {
+                let tab_size = 8;
+                let spaces_to_add = tab_size - (col % tab_size);
+                Some(" ".repeat(spaces_to_add))
+            }
+            _ if width > 0 && for_str.trim().is_empty() => Some("␣".to_string()),
             _ => {
                 let mut chars = for_str.chars();
                 if let Some(ch) = chars.next() {
                     if ch.is_control() && chars.next().is_none() {
-                        return Some('▯');
+                        return Some("▯".to_string());
                     }
                 }
                 None
-            } // _ if width == 0 => {
-              //     let mut chars = for_str.chars();
-              //     if let Some(ch) = chars.next() {
-              //         if ch.is_control() && chars.next().is_none() {
-              //             return Some('▯');
-              //         }
-              //     }
-              //     Some('·')
-              // }
-              // _ => None,
+            }
         }
     }
     // Gets the visible graphemes in the given column index.
@@ -164,10 +163,10 @@ impl Line {
 
             // Fragment is fully within range: Apply replacement characters if appropriate
             if fragment_start >= range.start && fragment_end <= range.end {
-                if let Some(replacement) = fragment.replacement {
+                if let Some(replacement) = &fragment.replacement {
                     let start = fragment.start;
                     let end = start.saturating_add(fragment.grapheme.len());
-                    result.replace(start, end, &replacement.to_string());
+                    result.replace(start, end, replacement);
                 }
             }
         }
@@ -200,10 +199,7 @@ impl Line {
         self.fragments
             .iter()
             .take(grapheme_idx)
-            .map(|fragment| match fragment.rendered_width {
-                GraphemeWidth::Half => 1,
-                GraphemeWidth::Full => 2,
-            })
+            .map(|fragment| usize::from(fragment.rendered_width))
             .sum()
     }
     pub fn width(&self) -> ColIdx {
@@ -489,5 +485,46 @@ mod tests {
         // Clipped left
         let res = line.get_annotated_visible_substr(2..10, Some(&annotations));
         assert_eq!(res.to_string(), "llo ");
+    }
+
+    #[test]
+    fn test_tabs() {
+        let line = Line::from("\t");
+        assert_eq!(line.width(), 4);
+        assert_eq!(line.get_visible_graphemes(0..4), "    ");
+
+        let line = Line::from("a\t");
+        assert_eq!(line.width(), 4);
+        assert_eq!(line.get_visible_graphemes(0..4), "a   ");
+
+        let line = Line::from("abcd\t");
+        assert_eq!(line.width(), 8);
+        assert_eq!(line.get_visible_graphemes(0..8), "abcd    ");
+
+        // Clipping
+        let line = Line::from("\t");
+        assert_eq!(line.get_visible_graphemes(0..2), "⋯"); // Partially visible on the right
+        assert_eq!(line.get_visible_graphemes(2..4), "⋯"); // Partially visible on the left
+    }
+
+    #[test]
+    fn test_tab_search() {
+        let line = Line::from("a\tb");
+        let query = "\t";
+        let res = line.search_forward(query, 0);
+        assert_eq!(res, Some(1));
+
+        let annotations = vec![Annotation {
+            annotation_type: AnnotationType::Match,
+            start: 1,
+            end: 2,
+        }];
+        let visible = line.get_annotated_visible_substr(0..10, Some(&annotations));
+        assert_eq!(visible.to_string(), "a   b "); // 1 space for 'a', 3 for tab (it aligns to 4), 1 for 'b', 1 for virtual space
+        // Wait, "a\t" -> 'a' is at col 0. '\t' starts at col 1. Tab size 4. Next multiple of 4 is 4.
+        // So '\t' should take 4 - (1 % 4) = 3 spaces.
+        // Total width: 1 ('a') + 3 (tab) + 1 ('b') = 5.
+        // Plus virtual space: 6.
+        assert_eq!(visible.to_string().len(), 6);
     }
 }

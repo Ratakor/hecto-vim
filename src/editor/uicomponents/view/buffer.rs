@@ -71,7 +71,7 @@ impl Buffer {
             .get(idx)
             .map_or(0, Line::first_non_whitespace_grapheme)
     }
-    pub fn width_until(&self, idx: LineIdx, until: GraphemeIdx) -> GraphemeIdx {
+    pub fn width_until(&self, idx: LineIdx, until: GraphemeIdx) -> ColIdx {
         self.lines
             .get(idx)
             .map_or(0, |line| line.width_until(until))
