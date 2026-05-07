@@ -569,7 +569,10 @@ impl View {
         self.text_location.preferred_grapheme_idx = self.text_location.grapheme_idx;
     }
     fn move_to_end_of_line(&mut self) {
-        self.text_location.grapheme_idx = self.buffer.grapheme_count(self.text_location.line_idx);
+        self.text_location.grapheme_idx = self
+            .buffer
+            .grapheme_count(self.text_location.line_idx)
+            .saturating_sub(1);
         self.text_location.preferred_grapheme_idx = self.text_location.grapheme_idx;
     }
     fn move_to_buffer_start(&mut self) {

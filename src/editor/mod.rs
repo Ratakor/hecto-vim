@@ -515,10 +515,7 @@ impl Editor {
                         self.process_command(Command::Move(Move::ViewCenter));
                     }
                     _ => {
-                        // If unknown g- command, try to process second key as single command
-                        if let Ok(command) = Command::try_from(Event::Key(second_key)) {
-                            self.process_command(command);
-                        }
+                        // If unknown g- command, do nothing and clear buffer
                     }
                 },
                 (KeyCode::Char(' '), KeyModifiers::NONE) => match (second_code, second_mod) {
@@ -554,10 +551,7 @@ impl Editor {
                         }
                     }
                     _ => {
-                        // If unknown SPC- command, try to process second key as single command
-                        if let Ok(command) = Command::try_from(Event::Key(second_key)) {
-                            self.process_command(command);
-                        }
+                        // If unknown SPC- command, do nothing and clear buffer
                     }
                 },
                 _ => {}
