@@ -1,6 +1,6 @@
+use arboard::Clipboard;
 use std::{cmp::min, io::Error};
 use unicode_segmentation::UnicodeSegmentation;
-use arboard::Clipboard;
 
 use crate::editor::RowIdx;
 use crate::prelude::*;
@@ -94,14 +94,20 @@ impl View {
             if self.text_location >= start {
                 if self.text_location.line_idx < height.saturating_sub(1) {
                     self.text_location.line_idx = self.text_location.line_idx.saturating_add(1);
-                    self.text_location.grapheme_idx = self.buffer.grapheme_count(self.text_location.line_idx);
+                    self.text_location.grapheme_idx =
+                        self.buffer.grapheme_count(self.text_location.line_idx);
                 } else {
-                    self.text_location.grapheme_idx = self.buffer.grapheme_count(self.text_location.line_idx);
+                    self.text_location.grapheme_idx =
+                        self.buffer.grapheme_count(self.text_location.line_idx);
                 }
             } else {
-                self.text_location.line_idx = min(self.text_location.line_idx.saturating_add(1), height.saturating_sub(1));
+                self.text_location.line_idx = min(
+                    self.text_location.line_idx.saturating_add(1),
+                    height.saturating_sub(1),
+                );
                 if self.text_location >= start {
-                    self.text_location.grapheme_idx = self.buffer.grapheme_count(self.text_location.line_idx);
+                    self.text_location.grapheme_idx =
+                        self.buffer.grapheme_count(self.text_location.line_idx);
                 } else {
                     self.text_location.grapheme_idx = 0;
                 }
@@ -112,7 +118,8 @@ impl View {
                 grapheme_idx: 0,
                 preferred_grapheme_idx: 0,
             });
-            self.text_location.grapheme_idx = self.buffer.grapheme_count(self.text_location.line_idx);
+            self.text_location.grapheme_idx =
+                self.buffer.grapheme_count(self.text_location.line_idx);
         }
         self.text_location.preferred_grapheme_idx = self.text_location.grapheme_idx;
         self.scroll_text_location_into_view();
@@ -138,7 +145,8 @@ impl View {
                 if self.text_location <= start {
                     self.text_location.grapheme_idx = 0;
                 } else {
-                    self.text_location.grapheme_idx = self.buffer.grapheme_count(self.text_location.line_idx);
+                    self.text_location.grapheme_idx =
+                        self.buffer.grapheme_count(self.text_location.line_idx);
                 }
             }
         } else {
@@ -185,7 +193,8 @@ impl View {
     }
 
     pub fn get_current_character(&self) -> String {
-        self.buffer.get_range(self.text_location, self.text_location)
+        self.buffer
+            .get_range(self.text_location, self.text_location)
     }
 
     pub fn delete_selection(&mut self) {
@@ -201,7 +210,9 @@ impl View {
         if text.is_empty() {
             return;
         }
-        let (start, end) = self.get_selection().unwrap_or((self.text_location, self.text_location));
+        let (start, end) = self
+            .get_selection()
+            .unwrap_or((self.text_location, self.text_location));
         let mut at = if start <= end { end } else { start };
         self.clear_selection();
 
@@ -223,7 +234,9 @@ impl View {
         if text.is_empty() {
             return;
         }
-        let (start, end) = self.get_selection().unwrap_or((self.text_location, self.text_location));
+        let (start, end) = self
+            .get_selection()
+            .unwrap_or((self.text_location, self.text_location));
         let at = if start <= end { start } else { end };
         self.clear_selection();
 
@@ -241,8 +254,10 @@ impl View {
         if line_count > 1 {
             self.text_location.grapheme_idx = last_line_graphemes.saturating_sub(1);
         } else {
-            self.text_location.grapheme_idx =
-                start.grapheme_idx.saturating_add(last_line_graphemes).saturating_sub(1);
+            self.text_location.grapheme_idx = start
+                .grapheme_idx
+                .saturating_add(last_line_graphemes)
+                .saturating_sub(1);
         }
         self.text_location.preferred_grapheme_idx = self.text_location.grapheme_idx;
         self.scroll_text_location_into_view();
@@ -529,7 +544,9 @@ impl View {
 
     fn auto_deindent(&mut self) {
         let indent_size = self.buffer.indent_size();
-        let non_whitespace = self.buffer.first_non_whitespace_grapheme(self.text_location.line_idx);
+        let non_whitespace = self
+            .buffer
+            .first_non_whitespace_grapheme(self.text_location.line_idx);
         if non_whitespace == self.text_location.grapheme_idx && non_whitespace >= indent_size {
             let start = Location {
                 line_idx: self.text_location.line_idx,
@@ -542,7 +559,8 @@ impl View {
                 preferred_grapheme_idx: 0,
             };
             self.buffer.delete_range(start, end);
-            self.text_location.grapheme_idx = self.text_location.grapheme_idx.saturating_sub(indent_size);
+            self.text_location.grapheme_idx =
+                self.text_location.grapheme_idx.saturating_sub(indent_size);
             self.text_location.preferred_grapheme_idx = self
                 .text_location
                 .preferred_grapheme_idx

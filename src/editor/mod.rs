@@ -624,13 +624,15 @@ impl Editor {
                                     self.update_message("Selection deleted.");
                                 }
                             }
-                            ContextMenuAction::Paste => {                                self.view.move_to_position(menu.position());
+                            ContextMenuAction::Paste => {
+                                self.view.move_to_position(menu.position());
                                 if let Ok(text) = self.system_clipboard.get_text() {
                                     self.view.paste(&text);
                                 } else {
                                     self.view.paste(&self.clipboard);
                                 }
-                            }                            ContextMenuAction::Undo => {
+                            }
+                            ContextMenuAction::Undo => {
                                 self.process_command(Command::Edit(Edit::Undo));
                             }
                             ContextMenuAction::Redo => {
@@ -641,7 +643,8 @@ impl Editor {
                                 self.mode = EditorMode::Visual;
                                 self.view.select_all();
                             }
-                            }                    }
+                        }
+                    }
                     self.context_menu = None;
                     self.view.set_needs_redraw(true);
                     return;
@@ -671,7 +674,8 @@ impl Editor {
                         self.view.can_undo(),
                         self.view.can_redo(),
                         self.view.has_selection(),
-                        self.view.can_paste(&self.clipboard, &mut self.system_clipboard),
+                        self.view
+                            .can_paste(&self.clipboard, &mut self.system_clipboard),
                     ));
                 } else {
                     self.context_menu = None;

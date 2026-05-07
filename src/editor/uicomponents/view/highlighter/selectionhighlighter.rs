@@ -42,7 +42,6 @@ impl SelectionHighlighter {
             line.grapheme_idx_to_byte_idx(end_grapheme)
         };
 
-
         if start_byte >= end_byte {
             return None;
         }

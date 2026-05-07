@@ -465,11 +465,11 @@ mod tests {
             start: 0,
             end: 6, // includes virtual space
         }];
-        
+
         // Full visible
         let res = line.get_annotated_visible_substr(0..10, Some(&annotations));
         assert_eq!(res.to_string(), "hello ");
-        
+
         // Clipped right (virtual space removed)
         let res = line.get_annotated_visible_substr(0..5, Some(&annotations));
         assert_eq!(res.to_string(), "hello");

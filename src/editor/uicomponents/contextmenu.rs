@@ -1,8 +1,8 @@
-use crate::prelude::*;
-use crate::editor::Terminal;
 use super::UIComponent;
-use std::io::Error;
+use crate::editor::Terminal;
+use crate::prelude::*;
 use crossterm::style::Color;
+use std::io::Error;
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum ContextMenuAction {
@@ -42,7 +42,7 @@ impl ContextMenu {
             raw_actions.push((ContextMenuAction::Delete, "Delete"));
         }
         raw_actions.push((ContextMenuAction::SelectAll, "Select All"));
-        
+
         if can_undo {
             raw_actions.push((ContextMenuAction::Undo, "Undo"));
         }
@@ -55,14 +55,17 @@ impl ContextMenu {
             .map(|(_, label)| label.len())
             .max()
             .unwrap_or(0);
-        
+
         // Add padding: 1 left, 1 right
         let width = max_label_width.saturating_add(2);
-        
+
         let available_actions: Vec<(ContextMenuAction, String)> = raw_actions
             .into_iter()
             .map(|(action, label)| {
-                (action, format!(" {:<width$} ", label, width = max_label_width))
+                (
+                    action,
+                    format!(" {:<width$} ", label, width = max_label_width),
+                )
             })
             .collect();
 

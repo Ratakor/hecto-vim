@@ -3,7 +3,7 @@ use super::FileInfo;
 use super::Highlighter;
 use super::Line;
 use crate::prelude::*;
-use std::fs::{File, read_to_string};
+use std::fs::{read_to_string, File};
 use std::io::Error;
 use std::io::Write;
 use std::ops::Range;
@@ -388,7 +388,7 @@ impl Buffer {
             }
             first_line.append_char(' '); // Temporarily add a char to avoid being empty if needed? No, rebuild_fragments handles empty.
             first_line.delete_last(); // Remove the temp char.
-            // Actually, just push_str and rebuild.
+                                      // Actually, just push_str and rebuild.
             first_line.append(&Line::from(&suffix)); // Use append for convenience
         }
 
