@@ -249,9 +249,26 @@ impl Buffer {
             self.undo_stack.pop();
         }
     }
-    pub fn insert_newline(&mut self, at: Location) {
+    pub fn insert_enter(&mut self, at: Location) -> usize {
         self.push_undo();
+        let indent_string = if let Some(line) = self.lines.get(at.line_idx) {
+            let non_whitespace_idx = line.first_non_whitespace_grapheme();
+            let indent_end = std::cmp::min(non_whitespace_idx, at.grapheme_idx);
+            line.get_substring(0..indent_end)
+        } else {
+            String::new()
+        };
         self.insert_newline_no_undo(at);
+        let mut current_at = at;
+        current_at.line_idx = current_at.line_idx.saturating_add(1);
+        current_at.grapheme_idx = 0;
+        let mut indent_count: usize = 0;
+        for character in indent_string.chars() {
+            self.insert_char_no_undo(character, current_at);
+            current_at.grapheme_idx = current_at.grapheme_idx.saturating_add(1);
+            indent_count = indent_count.saturating_add(1);
+        }
+        indent_count
     }
     fn insert_newline_no_undo(&mut self, at: Location) {
         if at.line_idx == self.height() {
@@ -369,5 +386,48 @@ impl Buffer {
                 current_at.grapheme_idx = current_at.grapheme_idx.saturating_add(1);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_insert_enter_indentation() {
+        let mut buffer = Buffer {
+            lines: vec![Line::from("    hello")],
+            file_info: FileInfo::default(),
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
+        };
+        let at = Location {
+            line_idx: 0,
+            grapheme_idx: 9, // end of "    hello"
+            preferred_grapheme_idx: 9,
+        };
+        buffer.insert_enter(at);
+        assert_eq!(buffer.lines.len(), 2);
+        assert_eq!(buffer.lines[0].to_string(), "    hello");
+        assert_eq!(buffer.lines[1].to_string(), "    ");
+    }
+
+    #[test]
+    fn test_insert_enter_mid_indentation() {
+        let mut buffer = Buffer {
+            lines: vec![Line::from("    hello")],
+            file_info: FileInfo::default(),
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
+        };
+        let at = Location {
+            line_idx: 0,
+            grapheme_idx: 2, // middle of "    "
+            preferred_grapheme_idx: 2,
+        };
+        buffer.insert_enter(at);
+        assert_eq!(buffer.lines.len(), 2);
+        assert_eq!(buffer.lines[0].to_string(), "  ");
+        assert_eq!(buffer.lines[1].to_string(), "    hello");
     }
 }

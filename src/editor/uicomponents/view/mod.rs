@@ -429,15 +429,10 @@ impl View {
     // endregion
     // region: Text editing
     fn insert_newline(&mut self) {
-        self.buffer.insert_newline(self.text_location);
-        let grapheme_count = self.buffer.grapheme_count(self.text_location.line_idx);
-        if self.text_location.grapheme_idx < grapheme_count {
-            self.handle_move_command(Move::Right);
-        } else {
-            // If already at EOL, buffer split happens; move to next line start.
-            self.text_location.line_idx = self.text_location.line_idx.saturating_add(1);
-            self.text_location.grapheme_idx = 0;
-        }
+        let indent_len = self.buffer.insert_enter(self.text_location);
+        self.text_location.line_idx = self.text_location.line_idx.saturating_add(1);
+        self.text_location.grapheme_idx = indent_len;
+        self.text_location.preferred_grapheme_idx = indent_len;
         self.scroll_text_location_into_view();
         self.set_needs_redraw(true);
     }
