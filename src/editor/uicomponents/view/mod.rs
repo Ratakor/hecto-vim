@@ -391,6 +391,7 @@ impl View {
             self.text_location.line_idx = self.text_location.line_idx.saturating_add(1);
             self.text_location.grapheme_idx = 0;
         }
+        self.scroll_text_location_into_view();
         self.set_needs_redraw(true);
     }
     fn delete_backward(&mut self) {
