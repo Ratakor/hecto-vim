@@ -3,8 +3,8 @@ use arboard::Clipboard;
 use crossterm::{
     cursor::SetCursorStyle,
     event::{
-        poll, read, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEvent,
-        MouseEventKind,
+        Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEvent,
+        MouseEventKind, poll, read,
     },
 };
 use std::{
@@ -87,6 +87,7 @@ pub struct Editor {
     clipboard: String,
     system_clipboard: Clipboard,
     command_buffer: Vec<KeyEvent>,
+    count: Option<usize>,
     context_menu: Option<ContextMenu>,
 }
 
@@ -121,6 +122,7 @@ impl Editor {
             system_clipboard: Clipboard::new()
                 .map_err(|e| Error::new(std::io::ErrorKind::Other, e))?,
             command_buffer: Vec::new(),
+            count: None,
             context_menu: None,
         };
         editor.handle_resize_command(size);
@@ -221,11 +223,17 @@ impl Editor {
     }
 
     fn refresh_status(&mut self) {
-        let command_buffer = self
-            .command_buffer
-            .iter()
-            .map(|key| self.key_event_to_string(*key))
-            .collect::<String>();
+        let mut command_buffer = self
+            .count
+            .map(|c| c.to_string())
+            .unwrap_or_else(String::new);
+        command_buffer.push_str(
+            &self
+                .command_buffer
+                .iter()
+                .map(|key| self.key_event_to_string(*key))
+                .collect::<String>(),
+        );
         self.message_bar.update_command_buffer(&command_buffer);
 
         let status = self.view.get_status(self.mode.to_string());
@@ -254,6 +262,7 @@ impl Editor {
             "[Movement]",
             "  h, j, k, l : Left, Down, Up, Right",
             "  C-u, C-d   : Half page Up/Down",
+            "  gg / XXXg  : Buffer Start / Go to line XXX",
             "  g          : Enter Goto mode",
             "  g/e        : Buffer Start/End",
             "  h/l        : Line Start/End",
@@ -335,7 +344,7 @@ impl Editor {
                             self.mode = EditorMode::Normal;
                             let _ = Terminal::set_cursor_style(SetCursorStyle::SteadyBlock);
                             if self.move_left_on_escape {
-                                self.process_command(Command::Move(Move::Left));
+                                self.process_command(Command::Move(Move::Left(1)));
                                 self.move_left_on_escape = false;
                             }
                             self.update_message("");
@@ -367,8 +376,26 @@ impl Editor {
         let first_mod = first_key.modifiers;
 
         if self.command_buffer.len() == 1 {
+            if let (KeyCode::Char(c), KeyModifiers::NONE) = (first_code, first_mod) {
+                if c.is_ascii_digit() {
+                    let digit = c.to_digit(10).unwrap_or(0) as usize;
+                    self.count = Some(
+                        self.count
+                            .unwrap_or(0)
+                            .saturating_mul(10)
+                            .saturating_add(digit),
+                    );
+                    return true;
+                }
+            }
+
             match (first_code, first_mod) {
                 (KeyCode::Char('g'), KeyModifiers::NONE) => {
+                    if let Some(count) = self.count {
+                        self.process_command(Command::Move(Move::GoToLine(count)));
+                        self.count = None;
+                        return true;
+                    }
                     return false;
                 }
                 (KeyCode::Char(' '), KeyModifiers::NONE) => {
@@ -381,7 +408,7 @@ impl Editor {
                     self.enter_insert_mode(false);
                 }
                 (KeyCode::Char('a'), KeyModifiers::NONE) => {
-                    self.process_command(Command::Move(Move::Right));
+                    self.process_command(Command::Move(Move::Right(1)));
                     self.enter_insert_mode(true);
                 }
                 (KeyCode::Char('o'), KeyModifiers::NONE) => {
@@ -392,7 +419,7 @@ impl Editor {
                 (KeyCode::Char('O'), KeyModifiers::SHIFT | KeyModifiers::NONE) => {
                     self.process_command(Command::Move(Move::StartOfLine));
                     self.process_command(Command::Edit(Edit::InsertNewline));
-                    self.process_command(Command::Move(Move::Up));
+                    self.process_command(Command::Move(Move::Up(1)));
                     self.enter_insert_mode(false);
                 }
                 (KeyCode::Char(':'), KeyModifiers::NONE) => {
@@ -402,16 +429,16 @@ impl Editor {
                     self.set_prompt(PromptType::Search);
                 }
                 (KeyCode::Char('h'), KeyModifiers::NONE) => {
-                    self.process_command(Command::Move(Move::Left));
+                    self.process_command(Command::Move(Move::Left(self.count.unwrap_or(1))));
                 }
                 (KeyCode::Char('j'), KeyModifiers::NONE) => {
-                    self.process_command(Command::Move(Move::Down));
+                    self.process_command(Command::Move(Move::Down(self.count.unwrap_or(1))));
                 }
                 (KeyCode::Char('k'), KeyModifiers::NONE) => {
-                    self.process_command(Command::Move(Move::Up));
+                    self.process_command(Command::Move(Move::Up(self.count.unwrap_or(1))));
                 }
                 (KeyCode::Char('l'), KeyModifiers::NONE) => {
-                    self.process_command(Command::Move(Move::Right));
+                    self.process_command(Command::Move(Move::Right(self.count.unwrap_or(1))));
                 }
                 (KeyCode::Char('y'), KeyModifiers::NONE) => {
                     if let Some(text) = self.view.get_selected_text() {
@@ -489,6 +516,7 @@ impl Editor {
                 }
                 _ => {}
             }
+            self.count = None;
             return true;
         }
 
@@ -507,34 +535,48 @@ impl Editor {
                     if let KeyCode::Char(c) = second_code {
                         self.process_command(Command::Edit(Edit::Replace(c)));
                     }
+                    self.count = None;
                 }
                 (KeyCode::Char('g'), KeyModifiers::NONE) => match (second_code, second_mod) {
                     (KeyCode::Char('g'), KeyModifiers::NONE) => {
-                        self.process_command(Command::Move(Move::BufferStart));
+                        if let Some(count) = self.count {
+                            self.process_command(Command::Move(Move::GoToLine(count)));
+                        } else {
+                            self.process_command(Command::Move(Move::BufferStart));
+                        }
+                        self.count = None;
                     }
                     (KeyCode::Char('e'), KeyModifiers::NONE) => {
                         self.process_command(Command::Move(Move::BufferEnd));
+                        self.count = None;
                     }
                     (KeyCode::Char('h'), KeyModifiers::NONE) => {
                         self.process_command(Command::Move(Move::StartOfLine));
+                        self.count = None;
                     }
                     (KeyCode::Char('l'), KeyModifiers::NONE) => {
                         self.process_command(Command::Move(Move::EndOfLine));
+                        self.count = None;
                     }
                     (KeyCode::Char('s'), KeyModifiers::NONE) => {
                         self.process_command(Command::Move(Move::FirstNonWhitespace));
+                        self.count = None;
                     }
                     (KeyCode::Char('t'), KeyModifiers::NONE) => {
                         self.process_command(Command::Move(Move::ViewTop));
+                        self.count = None;
                     }
                     (KeyCode::Char('b'), KeyModifiers::NONE) => {
                         self.process_command(Command::Move(Move::ViewBottom));
+                        self.count = None;
                     }
                     (KeyCode::Char('c'), KeyModifiers::NONE) => {
                         self.process_command(Command::Move(Move::ViewCenter));
+                        self.count = None;
                     }
                     _ => {
                         // If unknown g- command, do nothing and clear buffer
+                        self.count = None;
                     }
                 },
                 (KeyCode::Char(' '), KeyModifiers::NONE) => match (second_code, second_mod) {
@@ -587,6 +629,7 @@ impl Editor {
                 },
                 _ => {}
             }
+            self.count = None;
             return true;
         }
 
@@ -701,10 +744,10 @@ impl Editor {
                 }
             }
             MouseEventKind::ScrollUp => {
-                self.view.handle_move_command(Move::Up);
+                self.view.handle_move_command(Move::Up(1));
             }
             MouseEventKind::ScrollDown => {
-                self.view.handle_move_command(Move::Down);
+                self.view.handle_move_command(Move::Down(1));
             }
             _ => {}
         }
@@ -762,10 +805,10 @@ impl Editor {
                 }
             }
             Command::Edit(edit_command) => self.command_bar.handle_edit_command(edit_command),
-            Command::Move(Move::Up) => self.command_bar.navigate_history_up(),
-            Command::Move(Move::Down) => self.command_bar.navigate_history_down(),
-            Command::Move(Move::Left) => self.command_bar.move_caret_left(),
-            Command::Move(Move::Right) => self.command_bar.move_caret_right(),
+            Command::Move(Move::Up(_)) => self.command_bar.navigate_history_up(),
+            Command::Move(Move::Down(_)) => self.command_bar.navigate_history_down(),
+            Command::Move(Move::Left(_)) => self.command_bar.move_caret_left(),
+            Command::Move(Move::Right(_)) => self.command_bar.move_caret_right(),
             _ => {}
         }
     }
@@ -900,10 +943,10 @@ impl Editor {
                 let query = self.command_bar.value();
                 self.view.search(&query);
             }
-            Command::Move(Move::Right | Move::Down) => {
+            Command::Move(Move::Right(_) | Move::Down(_)) => {
                 self.view.search_next();
             }
-            Command::Move(Move::Up | Move::Left) => {
+            Command::Move(Move::Up(_) | Move::Left(_)) => {
                 self.view.search_prev();
             }
             Command::System(System::Resize(_)) | Command::Move(_) => {} // Not applicable during search, Resize already handled at this stage

@@ -423,10 +423,10 @@ impl View {
         // This match moves the positon, but does not check for all boundaries.
         // The final boundarline checking happens after the match statement.
         match command {
-            Move::Up => self.move_up(1),
-            Move::Down => self.move_down(1),
-            Move::Left => self.move_left(),
-            Move::Right => self.move_right(),
+            Move::Up(step) => self.move_up(step),
+            Move::Down(step) => self.move_down(step),
+            Move::Left(step) => self.move_left(step),
+            Move::Right(step) => self.move_right(step),
             Move::HalfPageUp => self.move_up(height.saturating_div(2)),
             Move::HalfPageDown => self.move_down(height.saturating_div(2)),
             Move::PageUp => self.move_up(height.saturating_sub(1)),
@@ -440,6 +440,7 @@ impl View {
             Move::AfterEndOfLine => self.move_to_after_end_of_line(),
             Move::BufferStart => self.move_to_buffer_start(),
             Move::BufferEnd => self.move_to_buffer_end(),
+            Move::GoToLine(line_idx) => self.move_to_line(line_idx),
         }
         if old_location.line_idx != self.text_location.line_idx
             || (self.selection_start.is_some()
@@ -486,7 +487,7 @@ impl View {
     }
     fn delete_backward(&mut self) {
         if self.text_location.line_idx != 0 || self.text_location.grapheme_idx != 0 {
-            self.handle_move_command(Move::Left);
+            self.handle_move_command(Move::Left(1));
             self.delete();
         }
     }
@@ -516,7 +517,7 @@ impl View {
                 if character == '}' {
                     self.auto_deindent();
                 }
-                self.handle_move_command(Move::Right);
+                self.handle_move_command(Move::Right(1));
                 return;
             }
         }
@@ -531,7 +532,7 @@ impl View {
         };
         if let Some(close) = closing_char {
             self.buffer.insert_char(character, self.text_location);
-            self.handle_move_command(Move::Right);
+            self.handle_move_command(Move::Right(1));
             self.buffer.insert_char(close, self.text_location);
             self.set_needs_redraw(true);
             return;
@@ -546,7 +547,7 @@ impl View {
         let grapheme_delta = new_len.saturating_sub(old_len);
         if grapheme_delta > 0 {
             //move right for an added grapheme (should be the regular case)
-            self.handle_move_command(Move::Right);
+            self.handle_move_command(Move::Right(1));
         }
         self.set_needs_redraw(true);
     }
@@ -677,25 +678,29 @@ impl View {
     // clippy::arithmetic_side_effects: This function performs arithmetic calculations
     // after explicitly checking that the target value will be within bounds.
     #[allow(clippy::arithmetic_side_effects)]
-    fn move_right(&mut self) {
-        let grapheme_count = self.buffer.grapheme_count(self.text_location.line_idx);
-        if self.text_location.grapheme_idx < grapheme_count {
-            self.text_location.grapheme_idx += 1;
-        } else {
-            self.move_to_start_of_line();
-            self.move_down(1);
+    fn move_right(&mut self, step: usize) {
+        for _ in 0..step {
+            let grapheme_count = self.buffer.grapheme_count(self.text_location.line_idx);
+            if self.text_location.grapheme_idx < grapheme_count {
+                self.text_location.grapheme_idx += 1;
+            } else {
+                self.move_to_start_of_line();
+                self.move_down(1);
+            }
         }
         self.text_location.preferred_grapheme_idx = self.text_location.grapheme_idx;
     }
     // clippy::arithmetic_side_effects: This function performs arithmetic calculations
     // after explicitly checking that the target value will be within bounds.
     #[allow(clippy::arithmetic_side_effects)]
-    fn move_left(&mut self) {
-        if self.text_location.grapheme_idx > 0 {
-            self.text_location.grapheme_idx -= 1;
-        } else if self.text_location.line_idx > 0 {
-            self.move_up(1);
-            self.move_to_end_of_line();
+    fn move_left(&mut self, step: usize) {
+        for _ in 0..step {
+            if self.text_location.grapheme_idx > 0 {
+                self.text_location.grapheme_idx -= 1;
+            } else if self.text_location.line_idx > 0 {
+                self.move_up(1);
+                self.move_to_end_of_line();
+            }
         }
         self.text_location.preferred_grapheme_idx = self.text_location.grapheme_idx;
     }
@@ -751,6 +756,11 @@ impl View {
         self.text_location.line_idx = self.buffer.height().saturating_sub(1);
         self.snap_to_valid_line();
         self.move_to_end_of_line();
+    }
+    fn move_to_line(&mut self, line_idx: usize) {
+        self.text_location.line_idx = line_idx.saturating_sub(1);
+        self.snap_to_valid_line();
+        self.move_to_start_of_line();
     }
 
     // Ensures self.location.grapheme_idx points to a valid grapheme index by snapping it to the left most grapheme if appropriate.
