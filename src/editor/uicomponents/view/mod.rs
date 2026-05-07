@@ -66,45 +66,72 @@ impl View {
     }
 
     pub fn select_line_down(&mut self) {
-        if self.selection_start.is_none() {
+        self.snap_to_valid_line();
+        let height = self.buffer.height();
+        if height == 0 {
+            return;
+        }
+        if let Some(start) = self.selection_start {
+            if self.text_location >= start {
+                if self.text_location.line_idx < height.saturating_sub(1) {
+                    self.text_location.line_idx = self.text_location.line_idx.saturating_add(1);
+                    self.text_location.grapheme_idx = self.buffer.grapheme_count(self.text_location.line_idx);
+                } else {
+                    self.text_location.grapheme_idx = self.buffer.grapheme_count(self.text_location.line_idx);
+                }
+            } else {
+                self.text_location.line_idx = min(self.text_location.line_idx.saturating_add(1), height.saturating_sub(1));
+                if self.text_location >= start {
+                    self.text_location.grapheme_idx = self.buffer.grapheme_count(self.text_location.line_idx);
+                } else {
+                    self.text_location.grapheme_idx = 0;
+                }
+            }
+        } else {
             self.selection_start = Some(Location {
                 line_idx: self.text_location.line_idx,
                 grapheme_idx: 0,
                 preferred_grapheme_idx: 0,
             });
-        } else if let Some(ref mut start) = self.selection_start {
-            start.grapheme_idx = 0;
+            self.text_location.grapheme_idx = self.buffer.grapheme_count(self.text_location.line_idx);
         }
-
-        self.text_location.line_idx = self.text_location.line_idx.saturating_add(1);
-        self.text_location.grapheme_idx = 0;
-
-        if self.text_location.line_idx >= self.buffer.height() {
-            self.text_location.line_idx = self.buffer.height().saturating_sub(1);
-            self.text_location.grapheme_idx =
-                self.buffer.grapheme_count(self.text_location.line_idx);
-        }
-
         self.text_location.preferred_grapheme_idx = self.text_location.grapheme_idx;
+        self.scroll_text_location_into_view();
         self.set_needs_redraw(true);
     }
 
     pub fn select_line_up(&mut self) {
-        if self.selection_start.is_none() {
-            let mut start = self.text_location;
-            start.line_idx = start.line_idx.saturating_add(1);
-            start.grapheme_idx = 0;
-            if start.line_idx >= self.buffer.height() {
-                start.line_idx = self.buffer.height().saturating_sub(1);
-                start.grapheme_idx = self.buffer.grapheme_count(start.line_idx);
+        self.snap_to_valid_line();
+        let height = self.buffer.height();
+        if height == 0 {
+            return;
+        }
+        if let Some(start) = self.selection_start {
+            if self.text_location <= start {
+                if self.text_location.line_idx > 0 {
+                    self.text_location.line_idx = self.text_location.line_idx.saturating_sub(1);
+                    self.text_location.grapheme_idx = 0;
+                } else {
+                    self.text_location.grapheme_idx = 0;
+                }
+            } else {
+                self.text_location.line_idx = self.text_location.line_idx.saturating_sub(1);
+                if self.text_location <= start {
+                    self.text_location.grapheme_idx = 0;
+                } else {
+                    self.text_location.grapheme_idx = self.buffer.grapheme_count(self.text_location.line_idx);
+                }
             }
-            self.selection_start = Some(start);
-            self.text_location.grapheme_idx = 0;
         } else {
-            self.text_location.line_idx = self.text_location.line_idx.saturating_sub(1);
+            self.selection_start = Some(Location {
+                line_idx: self.text_location.line_idx,
+                grapheme_idx: self.buffer.grapheme_count(self.text_location.line_idx),
+                preferred_grapheme_idx: 0,
+            });
             self.text_location.grapheme_idx = 0;
         }
         self.text_location.preferred_grapheme_idx = self.text_location.grapheme_idx;
+        self.scroll_text_location_into_view();
         self.set_needs_redraw(true);
     }
 
@@ -125,7 +152,6 @@ impl View {
             if start > end {
                 std::mem::swap(&mut start, &mut end);
             }
-            end.grapheme_idx = end.grapheme_idx.saturating_add(1);
             self.buffer.get_range(start, end)
         })
     }
@@ -157,6 +183,9 @@ impl View {
         let line_len = self.buffer.grapheme_count(at.line_idx);
         if at.grapheme_idx < line_len {
             at.grapheme_idx += 1;
+        } else {
+            at.line_idx = at.line_idx.saturating_add(1);
+            at.grapheme_idx = 0;
         }
 
         self.buffer.insert_string(text, at);

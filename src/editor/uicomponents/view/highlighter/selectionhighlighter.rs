@@ -37,10 +37,11 @@ impl SelectionHighlighter {
 
         let start_byte = line.grapheme_idx_to_byte_idx(start_grapheme);
         let end_byte = if end_grapheme >= line.grapheme_count() {
-            line.len()
+            line.len().saturating_add(1)
         } else {
             line.grapheme_idx_to_byte_idx(end_grapheme)
         };
+
 
         if start_byte >= end_byte {
             return None;

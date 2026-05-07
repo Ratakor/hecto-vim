@@ -216,7 +216,7 @@ impl Editor {
             .map(|key| self.key_event_to_string(*key))
             .collect::<String>();
         self.message_bar.update_command_buffer(&command_buffer);
-        
+
         let status = self.view.get_status(self.mode.to_string());
         let title = format!("{} - {NAME}", status.file_name);
         self.status_bar.update_status(status);
@@ -402,8 +402,6 @@ impl Editor {
                             self.clipboard = text;
                             self.update_message("Text copied to clipboard.");
                         }
-                        self.mode = EditorMode::Normal;
-                        self.view.clear_selection();
                     } else {
                         self.clipboard = self.view.get_current_character();
                         self.update_message("Character copied to clipboard.");
@@ -471,11 +469,10 @@ impl Editor {
                     }
                     self.update_message("");
                 }
-                _ => {
-                    if let Ok(command) = Command::try_from(Event::Key(first_key)) {
-                        self.process_command(command);
-                    }
+                (KeyCode::Enter, KeyModifiers::NONE) => {
+                    // Do nothing in Normal/Visual mode for Enter
                 }
+                _ => {}
             }
             return true;
         }
@@ -534,8 +531,6 @@ impl Editor {
                             } else {
                                 if self.view.get_selection().is_some() {
                                     self.update_message("Text copied to system clipboard.");
-                                    self.mode = EditorMode::Normal;
-                                    self.view.clear_selection();
                                 } else {
                                     self.update_message("Character copied to system clipboard.");
                                 }

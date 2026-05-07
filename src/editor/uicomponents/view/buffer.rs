@@ -80,7 +80,7 @@ impl Buffer {
     pub fn get_highlighted_substring(
         &self,
         line_idx: LineIdx,
-        range: Range<GraphemeIdx>,
+        range: Range<ColIdx>,
         highlighter: &Highlighter,
     ) -> Option<AnnotatedString> {
         self.lines.get(line_idx).map(|line| {
@@ -298,11 +298,16 @@ impl Buffer {
                     0
                 };
                 let end_g = if line_idx == end.line_idx {
-                    end.grapheme_idx
+                    end.grapheme_idx.saturating_add(1)
                 } else {
                     line.grapheme_count()
                 };
                 result.push(line.get_substring(start_g..end_g));
+                if line_idx == end.line_idx && end.grapheme_idx >= line.grapheme_count() {
+                    result.push(String::new());
+                }
+            } else if line_idx == end.line_idx && end.grapheme_idx == 0 && line_idx == self.height() {
+                result.push(String::new());
             }
         }
         result.join("\n")
@@ -316,44 +321,43 @@ impl Buffer {
             (end, start)
         };
 
-        if start.line_idx == end.line_idx {
-            if let Some(line) = self.lines.get_mut(start.line_idx) {
-                let count = end.grapheme_idx.saturating_sub(start.grapheme_idx);
-                for _ in 0..count {
-                    line.delete(start.grapheme_idx);
-                }
-                }
-            return;
-        }
-
-        // Multiple lines
-        if let Some(line) = self.lines.get_mut(start.line_idx) {
-            while line.grapheme_count() > start.grapheme_idx {
-                line.delete(start.grapheme_idx);
-            }
-        }
+        let mut lines_to_remove_until = end.line_idx;
+        let mut suffix = String::new();
 
         if let Some(last_line) = self.lines.get(end.line_idx) {
-            let mut remaining = last_line.clone();
-            for _ in 0..end.grapheme_idx {
-                remaining.delete(0);
-            }
-            if let Some(first_line) = self.lines.get_mut(start.line_idx) {
-                first_line.append(&remaining);
+            if end.grapheme_idx >= last_line.grapheme_count() {
+                if end.line_idx < self.height().saturating_sub(1) {
+                    lines_to_remove_until = end.line_idx.saturating_add(1);
+                    // clippy::indexing_slicing: We checked that lines_to_remove_until is within bounds
+                    #[allow(clippy::indexing_slicing)]
+                    suffix.push_str(&self.lines[lines_to_remove_until]);
+                }
+            } else {
+                suffix = last_line.get_substring(end.grapheme_idx.saturating_add(1)..last_line.grapheme_count());
             }
         }
 
-        let height = self.height();
-        let end_to_remove = min(end.line_idx, height.saturating_sub(1));
-        for _ in start.line_idx..end_to_remove {
-            self.lines.remove(start.line_idx.saturating_add(1));
+        if let Some(first_line) = self.lines.get_mut(start.line_idx) {
+            while first_line.grapheme_count() > start.grapheme_idx {
+                first_line.delete(start.grapheme_idx);
+            }
+            first_line.append_char(' '); // Temporarily add a char to avoid being empty if needed? No, rebuild_fragments handles empty.
+            first_line.delete_last(); // Remove the temp char. 
+            // Actually, just push_str and rebuild.
+            first_line.append(&Line::from(&suffix)); // Use append for convenience
+        }
+
+        for _ in start.line_idx..lines_to_remove_until {
+            if start.line_idx.saturating_add(1) < self.lines.len() {
+                self.lines.remove(start.line_idx.saturating_add(1));
+            }
         }
     }
 
     pub fn insert_string(&mut self, string: &str, at: Location) {
         self.push_undo();
         let mut current_at = at;
-        for (i, line_str) in string.lines().enumerate() {
+        for (i, line_str) in string.split('\n').enumerate() {
             if i > 0 {
                 self.insert_newline_no_undo(current_at);
                 current_at.line_idx = current_at.line_idx.saturating_add(1);

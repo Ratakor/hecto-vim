@@ -109,8 +109,8 @@ impl Line {
         if range.start >= range.end {
             return AnnotatedString::default();
         }
-        // Create a new annotated string
-        let mut result = AnnotatedString::from(&self.string);
+        // Create a new annotated string with a virtual space for the newline
+        let mut result = AnnotatedString::from(&(self.string.clone() + " "));
 
         // Apply annotations for this string
         if let Some(annotations) = annotations {
@@ -121,6 +121,13 @@ impl Line {
 
         // Insert replacement characters, and truncate if needed.
         // We do this backwards, otherwise the byte indices would be off in case a replacement character has a different width than the original character.
+
+        // Handle virtual newline space clipping
+        if self.width() >= range.end {
+            result.truncate_right_from(self.string.len());
+        } else if self.width().saturating_add(1) <= range.start {
+            result.truncate_left_until(self.string.len() + 1);
+        }
 
         let mut fragment_start = self.width();
         for fragment in self.fragments.iter().rev() {
@@ -370,6 +377,7 @@ impl Deref for Line {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::editor::AnnotationType;
 
     #[test]
     fn test_line_from() {
@@ -447,5 +455,31 @@ mod tests {
         assert_eq!(line.grapheme_at_width(2), 1); // inside "👍"
         assert_eq!(line.grapheme_at_width(3), 2);
         assert_eq!(line.grapheme_at_width(4), 3);
+    }
+
+    #[test]
+    fn test_get_annotated_visible_substr() {
+        let line = Line::from("hello");
+        let annotations = vec![Annotation {
+            annotation_type: AnnotationType::Selection,
+            start: 0,
+            end: 6, // includes virtual space
+        }];
+        
+        // Full visible
+        let res = line.get_annotated_visible_substr(0..10, Some(&annotations));
+        assert_eq!(res.to_string(), "hello ");
+        
+        // Clipped right (virtual space removed)
+        let res = line.get_annotated_visible_substr(0..5, Some(&annotations));
+        assert_eq!(res.to_string(), "hello");
+
+        // Clipped right (in text)
+        let res = line.get_annotated_visible_substr(0..3, Some(&annotations));
+        assert_eq!(res.to_string(), "hel");
+
+        // Clipped left
+        let res = line.get_annotated_visible_substr(2..10, Some(&annotations));
+        assert_eq!(res.to_string(), "llo ");
     }
 }
