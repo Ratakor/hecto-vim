@@ -3,10 +3,11 @@ use super::FileInfo;
 use super::Highlighter;
 use super::Line;
 use crate::prelude::*;
-use std::fs::{read_to_string, File};
-use std::io::Error;
-use std::io::Write;
-use std::ops::Range;
+use std::{
+    fs::{File, read_to_string},
+    io::{Error, ErrorKind::NotFound, Write},
+    ops::Range,
+};
 
 pub struct Buffer {
     lines: Vec<Line>,
@@ -43,7 +44,10 @@ impl Buffer {
     }
 
     fn push_undo(&mut self, at: Location) {
-        if self.saved_state_index.is_some_and(|i| i > self.undo_stack.len()) {
+        if self
+            .saved_state_index
+            .is_some_and(|i| i > self.undo_stack.len())
+        {
             self.saved_state_index = None;
         }
         self.undo_stack.push((self.lines.clone(), at));
@@ -118,10 +122,15 @@ impl Buffer {
     }
 
     pub fn load(file_name: &str) -> Result<Self, Error> {
-        let contents = read_to_string(file_name)?;
-        let lines = contents.lines().map(Line::from).collect();
         Ok(Self {
-            lines,
+            lines: read_to_string(file_name)
+                .or_else(|err| match err.kind() {
+                    NotFound => Ok(String::new()),
+                    _ => Err(err),
+                })?
+                .lines()
+                .map(Line::from)
+                .collect(),
             file_info: FileInfo::from(file_name),
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
@@ -402,7 +411,7 @@ impl Buffer {
             }
             first_line.append_char(' '); // Temporarily add a char to avoid being empty if needed? No, rebuild_fragments handles empty.
             first_line.delete_last(); // Remove the temp char.
-                                      // Actually, just push_str and rebuild.
+            // Actually, just push_str and rebuild.
             first_line.append(&Line::from(&suffix)); // Use append for convenience
         }
 
