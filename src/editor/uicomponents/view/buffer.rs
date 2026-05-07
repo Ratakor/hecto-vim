@@ -12,7 +12,6 @@ use std::ops::Range;
 pub struct Buffer {
     lines: Vec<Line>,
     file_info: FileInfo,
-    dirty: bool,
     undo_stack: Vec<Vec<Line>>,
     redo_stack: Vec<Vec<Line>>,
 }
@@ -22,7 +21,6 @@ impl Default for Buffer {
         Self {
             lines: vec![Line::default()],
             file_info: FileInfo::default(),
-            dirty: false,
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
         }
@@ -30,8 +28,8 @@ impl Default for Buffer {
 }
 
 impl Buffer {
-    pub const fn is_dirty(&self) -> bool {
-        self.dirty
+    pub fn is_dirty(&self) -> bool {
+        !self.undo_stack.is_empty()
     }
     pub const fn get_file_info(&self) -> &FileInfo {
         &self.file_info
@@ -46,7 +44,6 @@ impl Buffer {
         if let Some(lines) = self.undo_stack.pop() {
             self.redo_stack.push(self.lines.clone());
             self.lines = lines;
-            self.dirty = true;
             return true;
         }
         false
@@ -56,7 +53,6 @@ impl Buffer {
         if let Some(lines) = self.redo_stack.pop() {
             self.undo_stack.push(self.lines.clone());
             self.lines = lines;
-            self.dirty = true;
             return true;
         }
         false
@@ -107,7 +103,6 @@ impl Buffer {
         Ok(Self {
             lines,
             file_info: FileInfo::from(file_name),
-            dirty: false,
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
         })
@@ -197,13 +192,15 @@ impl Buffer {
         let file_info = FileInfo::from(file_name);
         self.save_to_file(&file_info)?;
         self.file_info = file_info;
-        self.dirty = false;
+        self.undo_stack.clear();
+        self.redo_stack.clear();
         Ok(())
     }
 
     pub fn save(&mut self) -> Result<(), Error> {
         self.save_to_file(&self.file_info)?;
-        self.dirty = false;
+        self.undo_stack.clear();
+        self.redo_stack.clear();
         Ok(())
     }
 
@@ -228,10 +225,8 @@ impl Buffer {
         debug_assert!(at.line_idx <= self.height());
         if at.line_idx == self.height() {
             self.lines.push(Line::from(&character.to_string()));
-            self.dirty = true;
         } else if let Some(line) = self.lines.get_mut(at.line_idx) {
             line.insert_char(character, at.grapheme_idx);
-            self.dirty = true;
         }
     }
     pub fn delete(&mut self, at: Location) {
@@ -244,13 +239,11 @@ impl Buffer {
                 // clippy::indexing_slicing: We checked for existence of this line in the surrounding if statment
                 #[allow(clippy::indexing_slicing)]
                 self.lines[at.line_idx].append(&next_line);
-                self.dirty = true;
-            } else if at.grapheme_idx < line.grapheme_count() {
+                } else if at.grapheme_idx < line.grapheme_count() {
                 // clippy::indexing_slicing: We checked for existence of this line in the surrounding if statment
                 #[allow(clippy::indexing_slicing)]
                 self.lines[at.line_idx].delete(at.grapheme_idx);
-                self.dirty = true;
-            }
+                }
         } else {
             // Undo was pushed but no line was found. We should pop it back to keep redo stack clean if we want but for now just leave it.
             // Actually, if we pushed undo and nothing happened, we might want to pop it.
@@ -264,11 +257,9 @@ impl Buffer {
     fn insert_newline_no_undo(&mut self, at: Location) {
         if at.line_idx == self.height() {
             self.lines.push(Line::default());
-            self.dirty = true;
         } else if let Some(line) = self.lines.get_mut(at.line_idx) {
             let new = line.split(at.grapheme_idx);
             self.lines.insert(at.line_idx.saturating_add(1), new);
-            self.dirty = true;
         }
     }
 
@@ -331,8 +322,7 @@ impl Buffer {
                 for _ in 0..count {
                     line.delete(start.grapheme_idx);
                 }
-                self.dirty = true;
-            }
+                }
             return;
         }
 
@@ -358,7 +348,6 @@ impl Buffer {
         for _ in start.line_idx..end_to_remove {
             self.lines.remove(start.line_idx.saturating_add(1));
         }
-        self.dirty = true;
     }
 
     pub fn insert_string(&mut self, string: &str, at: Location) {
@@ -375,6 +364,5 @@ impl Buffer {
                 current_at.grapheme_idx = current_at.grapheme_idx.saturating_add(1);
             }
         }
-        self.dirty = true;
     }
 }
