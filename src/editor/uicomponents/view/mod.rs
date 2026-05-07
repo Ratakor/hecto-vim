@@ -403,6 +403,31 @@ impl View {
         self.set_needs_redraw(true);
     }
     fn insert_char(&mut self, character: char) {
+        // If typing a closing character that is already there, just move past it
+        if matches!(character, ')' | ']' | '}' | '"' | '\'' | '`') {
+            let next_char = self.get_current_character();
+            if next_char == character.to_string() {
+                self.handle_move_command(Move::Right);
+                return;
+            }
+        }
+        let closing_char = match character {
+            '(' => Some(')'),
+            '[' => Some(']'),
+            '{' => Some('}'),
+            '"' => Some('"'),
+            '\'' => Some('\''),
+            '`' => Some('`'),
+            _ => None,
+        };
+        if let Some(close) = closing_char {
+            self.buffer.insert_char(character, self.text_location);
+            self.handle_move_command(Move::Right);
+            self.buffer.insert_char(close, self.text_location);
+            self.set_needs_redraw(true);
+            return;
+        }
+
         let old_len = self.buffer.grapheme_count(self.text_location.line_idx);
         self.buffer.insert_char(character, self.text_location);
         let new_len = self.buffer.grapheme_count(self.text_location.line_idx);
