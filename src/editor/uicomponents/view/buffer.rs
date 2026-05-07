@@ -13,6 +13,7 @@ pub struct Buffer {
     file_info: FileInfo,
     undo_stack: Vec<(Vec<Line>, Location)>,
     redo_stack: Vec<(Vec<Line>, Location)>,
+    saved_state_index: Option<usize>,
 }
 
 impl Default for Buffer {
@@ -22,6 +23,7 @@ impl Default for Buffer {
             file_info: FileInfo::default(),
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
+            saved_state_index: Some(0),
         }
     }
 }
@@ -34,13 +36,16 @@ impl Buffer {
         !self.redo_stack.is_empty()
     }
     pub fn is_dirty(&self) -> bool {
-        !self.undo_stack.is_empty()
+        self.saved_state_index != Some(self.undo_stack.len())
     }
     pub const fn get_file_info(&self) -> &FileInfo {
         &self.file_info
     }
 
     fn push_undo(&mut self, at: Location) {
+        if self.saved_state_index.is_some_and(|i| i > self.undo_stack.len()) {
+            self.saved_state_index = None;
+        }
         self.undo_stack.push((self.lines.clone(), at));
         self.redo_stack.clear();
     }
@@ -120,6 +125,7 @@ impl Buffer {
             file_info: FileInfo::from(file_name),
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
+            saved_state_index: Some(0),
         })
     }
 
@@ -207,15 +213,13 @@ impl Buffer {
         let file_info = FileInfo::from(file_name);
         self.save_to_file(&file_info)?;
         self.file_info = file_info;
-        self.undo_stack.clear();
-        self.redo_stack.clear();
+        self.saved_state_index = Some(self.undo_stack.len());
         Ok(())
     }
 
     pub fn save(&mut self) -> Result<(), Error> {
         self.save_to_file(&self.file_info)?;
-        self.undo_stack.clear();
-        self.redo_stack.clear();
+        self.saved_state_index = Some(self.undo_stack.len());
         Ok(())
     }
 
@@ -437,6 +441,7 @@ mod tests {
             file_info: FileInfo::default(),
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
+            saved_state_index: Some(0),
         };
         let at = Location {
             line_idx: 0,
@@ -456,6 +461,7 @@ mod tests {
             file_info: FileInfo::default(),
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
+            saved_state_index: Some(0),
         };
         let at = Location {
             line_idx: 0,
@@ -475,6 +481,7 @@ mod tests {
             file_info: FileInfo::default(),
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
+            saved_state_index: Some(0),
         };
         let at = Location {
             line_idx: 0,
@@ -494,6 +501,7 @@ mod tests {
             file_info: FileInfo::default(),
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
+            saved_state_index: Some(0),
         };
         assert_eq!(buffer.indent_size(), 2);
     }
@@ -531,6 +539,7 @@ mod tests {
             file_info: FileInfo::default(),
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
+            saved_state_index: Some(0),
         };
         let at = Location {
             line_idx: 0,
@@ -540,5 +549,32 @@ mod tests {
         buffer.replace_char('H', at);
         assert_eq!(buffer.lines[0].to_string(), "Hello");
         assert!(buffer.can_undo());
+    }
+
+    #[test]
+    fn test_save_behavior() {
+        let mut buffer = Buffer::default();
+        let loc = Location {
+            line_idx: 0,
+            grapheme_idx: 0,
+            preferred_grapheme_idx: 0,
+        };
+        buffer.insert_char('a', loc);
+        assert!(buffer.can_undo());
+        assert!(buffer.is_dirty());
+
+        // Manually simulate save by setting saved_state_index
+        // because we don't want to hit the disk or panic in tests
+        buffer.saved_state_index = Some(buffer.undo_stack.len());
+
+        assert!(!buffer.is_dirty());
+        assert!(buffer.can_undo()); // Undo should still be available after "save"
+
+        buffer.undo(loc);
+        assert!(buffer.is_dirty()); // Should be dirty again after undoing to pre-save state
+        assert!(buffer.can_redo());
+
+        buffer.redo(loc);
+        assert!(!buffer.is_dirty()); // Should be clean again after redoing to saved state
     }
 }
