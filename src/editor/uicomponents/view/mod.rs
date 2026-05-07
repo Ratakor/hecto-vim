@@ -1,5 +1,6 @@
 use std::{cmp::min, io::Error};
 use unicode_segmentation::UnicodeSegmentation;
+use arboard::Clipboard;
 
 use crate::editor::RowIdx;
 use crate::prelude::*;
@@ -52,6 +53,18 @@ impl View {
     }
     pub fn can_redo(&self) -> bool {
         self.buffer.can_redo()
+    }
+    pub fn has_selection(&self) -> bool {
+        self.selection_start.is_some()
+    }
+    pub fn can_paste(&self, internal_clipboard: &str, system_clipboard: &mut Clipboard) -> bool {
+        if !internal_clipboard.is_empty() {
+            return true;
+        }
+        if let Ok(text) = system_clipboard.get_text() {
+            return !text.is_empty();
+        }
+        false
     }
     pub fn get_status(&self, mode: String) -> DocumentStatus {
         let file_info = self.buffer.get_file_info();

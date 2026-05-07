@@ -7,6 +7,7 @@ use crossterm::style::Color;
 #[derive(Clone, Copy, PartialEq)]
 pub enum ContextMenuAction {
     Copy,
+    Delete,
     Paste,
     Undo,
     Redo,
@@ -27,12 +28,21 @@ impl ContextMenu {
         terminal_size: Size,
         can_undo: bool,
         can_redo: bool,
+        has_selection: bool,
+        can_paste: bool,
     ) -> Self {
-        let mut raw_actions = vec![
-            (ContextMenuAction::Copy, "Copy"),
-            (ContextMenuAction::Paste, "Paste"),
-            (ContextMenuAction::SelectAll, "Select All"),
-        ];
+        let mut raw_actions = Vec::new();
+        if has_selection {
+            raw_actions.push((ContextMenuAction::Copy, "Copy"));
+        }
+        if can_paste {
+            raw_actions.push((ContextMenuAction::Paste, "Paste"));
+        }
+        if has_selection {
+            raw_actions.push((ContextMenuAction::Delete, "Delete"));
+        }
+        raw_actions.push((ContextMenuAction::SelectAll, "Select All"));
+        
         if can_undo {
             raw_actions.push((ContextMenuAction::Undo, "Undo"));
         }
