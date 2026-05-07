@@ -452,6 +452,9 @@ impl Editor {
                     self.view.paste_backward(&self.clipboard);
                     self.mode = EditorMode::Normal;
                 }
+                (KeyCode::Char('%'), KeyModifiers::SHIFT | KeyModifiers::NONE) => {
+                    self.view.select_all();
+                }
                 (KeyCode::Char('J'), KeyModifiers::SHIFT | KeyModifiers::NONE) => {
                     self.view.concat_lines();
                 }
@@ -625,6 +628,11 @@ impl Editor {
                             }
                             ContextMenuAction::Redo => {
                                 self.process_command(Command::Edit(Edit::Redo));
+                            }
+                            ContextMenuAction::SelectAll => {
+                                // I know this is different from %, it's on purpose
+                                self.mode = EditorMode::Visual;
+                                self.view.select_all();
                             }
                             }                    }
                     self.context_menu = None;

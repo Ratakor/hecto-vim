@@ -10,6 +10,7 @@ pub enum ContextMenuAction {
     Paste,
     Undo,
     Redo,
+    SelectAll,
 }
 
 pub struct ContextMenu {
@@ -17,7 +18,7 @@ pub struct ContextMenu {
     needs_redraw: bool,
     size: Size,
     hovered_action: Option<ContextMenuAction>,
-    available_actions: Vec<(ContextMenuAction, &'static str)>,
+    available_actions: Vec<(ContextMenuAction, String)>,
 }
 
 impl ContextMenu {
@@ -27,19 +28,36 @@ impl ContextMenu {
         can_undo: bool,
         can_redo: bool,
     ) -> Self {
-        let mut available_actions = vec![
-            (ContextMenuAction::Copy, "Copy   "),
-            (ContextMenuAction::Paste, "Paste  "),
+        let mut raw_actions = vec![
+            (ContextMenuAction::Copy, "Copy"),
+            (ContextMenuAction::Paste, "Paste"),
+            (ContextMenuAction::SelectAll, "Select All"),
         ];
         if can_undo {
-            available_actions.push((ContextMenuAction::Undo, "Undo   "));
+            raw_actions.push((ContextMenuAction::Undo, "Undo"));
         }
         if can_redo {
-            available_actions.push((ContextMenuAction::Redo, "Redo   "));
+            raw_actions.push((ContextMenuAction::Redo, "Redo"));
         }
 
+        let max_label_width = raw_actions
+            .iter()
+            .map(|(_, label)| label.len())
+            .max()
+            .unwrap_or(0);
+        
+        // Add padding: 1 left, 1 right
+        let width = max_label_width.saturating_add(2);
+        
+        let available_actions: Vec<(ContextMenuAction, String)> = raw_actions
+            .into_iter()
+            .map(|(action, label)| {
+                (action, format!(" {:<width$} ", label, width = max_label_width))
+            })
+            .collect();
+
         let size = Size {
-            width: 7,
+            width,
             height: available_actions.len(),
         };
 

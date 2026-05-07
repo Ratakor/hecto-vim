@@ -141,6 +141,15 @@ impl View {
         self.set_needs_redraw(true);
     }
 
+    pub fn select_all(&mut self) {
+        self.selection_start = Some(Location::default());
+        self.text_location.line_idx = self.buffer.height().saturating_sub(1);
+        self.text_location.grapheme_idx = self.buffer.grapheme_count(self.text_location.line_idx);
+        self.text_location.preferred_grapheme_idx = self.text_location.grapheme_idx;
+        self.set_needs_redraw(true);
+        self.scroll_text_location_into_view();
+    }
+
     pub fn clear_selection(&mut self) {
         if self.selection_start.is_some() {
             self.selection_start = None;
