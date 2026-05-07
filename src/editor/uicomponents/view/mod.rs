@@ -461,6 +461,9 @@ impl View {
         if matches!(character, ')' | ']' | '}' | '"' | '\'' | '`') {
             let next_char = self.get_current_character();
             if next_char == character.to_string() {
+                if character == '}' {
+                    self.auto_deindent();
+                }
                 self.handle_move_command(Move::Right);
                 return;
             }
@@ -482,6 +485,9 @@ impl View {
             return;
         }
 
+        if character == '}' {
+            self.auto_deindent();
+        }
         let old_len = self.buffer.grapheme_count(self.text_location.line_idx);
         self.buffer.insert_char(character, self.text_location);
         let new_len = self.buffer.grapheme_count(self.text_location.line_idx);
@@ -491,6 +497,29 @@ impl View {
             self.handle_move_command(Move::Right);
         }
         self.set_needs_redraw(true);
+    }
+
+    fn auto_deindent(&mut self) {
+        let indent_size = self.buffer.indent_size();
+        let non_whitespace = self.buffer.first_non_whitespace_grapheme(self.text_location.line_idx);
+        if non_whitespace == self.text_location.grapheme_idx && non_whitespace >= indent_size {
+            let start = Location {
+                line_idx: self.text_location.line_idx,
+                grapheme_idx: 0,
+                preferred_grapheme_idx: 0,
+            };
+            let end = Location {
+                line_idx: self.text_location.line_idx,
+                grapheme_idx: indent_size.saturating_sub(1),
+                preferred_grapheme_idx: 0,
+            };
+            self.buffer.delete_range(start, end);
+            self.text_location.grapheme_idx = self.text_location.grapheme_idx.saturating_sub(indent_size);
+            self.text_location.preferred_grapheme_idx = self
+                .text_location
+                .preferred_grapheme_idx
+                .saturating_sub(indent_size);
+        }
     }
     // endregion
 

@@ -96,6 +96,16 @@ impl Buffer {
         }
     }
 
+    pub fn indent_size(&self) -> usize {
+        for line in &self.lines {
+            let non_whitespace = line.first_non_whitespace_grapheme();
+            if non_whitespace > 0 {
+                return non_whitespace;
+            }
+        }
+        4
+    }
+
     pub fn load(file_name: &str) -> Result<Self, Error> {
         let contents = read_to_string(file_name)?;
         let lines = contents.lines().map(Line::from).collect();
@@ -251,13 +261,24 @@ impl Buffer {
     }
     pub fn insert_enter(&mut self, at: Location) -> usize {
         self.push_undo();
-        let indent_string = if let Some(line) = self.lines.get(at.line_idx) {
+        let mut indent_string = if let Some(line) = self.lines.get(at.line_idx) {
             let non_whitespace_idx = line.first_non_whitespace_grapheme();
             let indent_end = std::cmp::min(non_whitespace_idx, at.grapheme_idx);
             line.get_substring(0..indent_end)
         } else {
             String::new()
         };
+        if let Some(line) = self.lines.get(at.line_idx) {
+            if at.grapheme_idx > 0 {
+                let char_before =
+                    line.get_substring(at.grapheme_idx.saturating_sub(1)..at.grapheme_idx);
+                if char_before == "{" {
+                    for _ in 0..self.indent_size() {
+                        indent_string.push(' ');
+                    }
+                }
+            }
+        }
         self.insert_newline_no_undo(at);
         let mut current_at = at;
         current_at.line_idx = current_at.line_idx.saturating_add(1);
@@ -429,5 +450,35 @@ mod tests {
         assert_eq!(buffer.lines.len(), 2);
         assert_eq!(buffer.lines[0].to_string(), "  ");
         assert_eq!(buffer.lines[1].to_string(), "    hello");
+    }
+
+    #[test]
+    fn test_insert_enter_brace_indentation() {
+        let mut buffer = Buffer {
+            lines: vec![Line::from("fn x() {")],
+            file_info: FileInfo::default(),
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
+        };
+        let at = Location {
+            line_idx: 0,
+            grapheme_idx: 8, // end of "fn x() {"
+            preferred_grapheme_idx: 8,
+        };
+        buffer.insert_enter(at);
+        assert_eq!(buffer.lines.len(), 2);
+        assert_eq!(buffer.lines[0].to_string(), "fn x() {");
+        assert_eq!(buffer.lines[1].to_string(), "    ");
+    }
+
+    #[test]
+    fn test_indent_size_detection() {
+        let buffer = Buffer {
+            lines: vec![Line::from("  two spaces")],
+            file_info: FileInfo::default(),
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
+        };
+        assert_eq!(buffer.indent_size(), 2);
     }
 }
