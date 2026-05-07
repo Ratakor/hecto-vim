@@ -238,6 +238,7 @@ impl Editor {
         let _ = Terminal::move_caret_to(Position::default());
         let help_text = vec![
             "HELP - ALL COMMANDS (Press any key to exit)",
+            "This may be out of date",
             "",
             "[Movement]",
             "  h, j, k, l : Left, Down, Up, Right",
@@ -255,13 +256,14 @@ impl Editor {
             "  u, U       : Undo, Redo",
             "  p          : Paste clipboard",
             "  SPC p/P    : Paste from system clipboard",
-            "  d          : Delete char (Normal) / Selection (Visual)",
+            "  d          : Delete selection & copy to clipboard",
+            "  SPC d      : Delete selection & copy to system clipboard",
             "",
             "[Selection & Visual]",
             "  v          : Toggle Visual mode",
-            "  x          : Select whole line (enters Visual)",
-            "  y          : Yank char (Normal) / Selection (Visual)",
-            "  SPC y      : Yank to system clipboard",
+            "  x          : Select whole line",
+            "  y          : Copy (yank) selection",
+            "  SPC y      : Copy (yank) selection to system clipboard",
             "",
             "[Search & Commands]",
             "  /          : Search",
@@ -543,6 +545,18 @@ impl Editor {
                             self.view.paste_backward(&text);
                         }
                         self.mode = EditorMode::Normal;
+                    }
+                    (KeyCode::Char('d'), KeyModifiers::NONE) => {
+                        if let Some(text) = self.view.get_selected_text() {
+                            if let Err(e) = self.system_clipboard.set_text(text) {
+                                self.update_message(&format!("ERR: Clipboard error: {e}"));
+                            } else {
+                                self.view.delete_selection();
+                                self.mode = EditorMode::Normal;
+                            }
+                        } else {
+                            self.process_command(Command::Edit(Edit::Delete));
+                        }
                     }
                     _ => {
                         // If unknown SPC- command, do nothing and clear buffer
