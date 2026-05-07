@@ -819,9 +819,9 @@ impl Editor {
         let arg = parts.get(1).copied();
 
         match cmd {
-            "q" => self.handle_quit_command(),
-            "q!" => self.should_quit = true,
-            "w" => {
+            "q" | "quit" => self.handle_quit_command(),
+            "q!" | "quit!" => self.should_quit = true,
+            "w" | "write" => {
                 if let Some(path) = arg {
                     self.save(Some(path));
                 } else {
