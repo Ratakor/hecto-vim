@@ -15,6 +15,7 @@ pub enum Move {
     StartOfLine,
     FirstNonWhitespace,
     EndOfLine,
+    AfterEndOfLine,
     BufferStart,
     BufferEnd,
     Up,

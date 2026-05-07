@@ -368,7 +368,7 @@ impl Editor {
                     self.enter_insert_mode(true);
                 }
                 (KeyCode::Char('o'), KeyModifiers::NONE) => {
-                    self.process_command(Command::Move(Move::EndOfLine));
+                    self.process_command(Command::Move(Move::AfterEndOfLine));
                     self.process_command(Command::Edit(Edit::InsertNewline));
                     self.enter_insert_mode(false);
                 }
