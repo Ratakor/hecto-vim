@@ -149,10 +149,18 @@ impl View {
         if text.is_empty() {
             return;
         }
-        self.buffer.insert_string(text, self.text_location);
-        for _ in 0..text.grapheme_indices(true).count() {
-            self.handle_move_command(Move::Right);
+        let (start, end) = self.get_selection().unwrap_or((self.text_location, self.text_location));
+        let mut at = if start <= end { end } else { start };
+        self.clear_selection();
+
+        // Paste after: move one grapheme forward
+        let line_len = self.buffer.grapheme_count(at.line_idx);
+        if at.grapheme_idx < line_len {
+            at.grapheme_idx += 1;
         }
+
+        self.buffer.insert_string(text, at);
+        self.jump_to_end_of_pasted_text(at, text);
         self.set_needs_redraw(true);
     }
 
@@ -160,17 +168,29 @@ impl View {
         if text.is_empty() {
             return;
         }
-        let mut at = self.text_location;
-        if at.grapheme_idx == 0 {
-            at.line_idx = at.line_idx.saturating_sub(1);
-        } else {
-            at.grapheme_idx -= 1;
-        }
+        let (start, end) = self.get_selection().unwrap_or((self.text_location, self.text_location));
+        let at = if start <= end { start } else { end };
+        self.clear_selection();
+
         self.buffer.insert_string(text, at);
-        for _ in 0..text.grapheme_indices(true).count() {
-            self.handle_move_command(Move::Right);
-        }
+        self.jump_to_end_of_pasted_text(at, text);
         self.set_needs_redraw(true);
+    }
+
+    fn jump_to_end_of_pasted_text(&mut self, start: Location, text: &str) {
+        let lines: Vec<&str> = text.split('\n').collect();
+        let line_count = lines.len();
+        let last_line_graphemes = lines.last().unwrap_or(&"").grapheme_indices(true).count();
+
+        self.text_location.line_idx = start.line_idx.saturating_add(line_count.saturating_sub(1));
+        if line_count > 1 {
+            self.text_location.grapheme_idx = last_line_graphemes.saturating_sub(1);
+        } else {
+            self.text_location.grapheme_idx =
+                start.grapheme_idx.saturating_add(last_line_graphemes).saturating_sub(1);
+        }
+        self.text_location.preferred_grapheme_idx = self.text_location.grapheme_idx;
+        self.scroll_text_location_into_view();
     }
 
     pub fn concat_lines(&mut self) {

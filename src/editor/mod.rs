@@ -440,9 +440,11 @@ impl Editor {
                 }
                 (KeyCode::Char('p'), KeyModifiers::NONE) => {
                     self.view.paste(&self.clipboard);
+                    self.mode = EditorMode::Normal;
                 }
                 (KeyCode::Char('P'), KeyModifiers::SHIFT | KeyModifiers::NONE) => {
                     self.view.paste_backward(&self.clipboard);
+                    self.mode = EditorMode::Normal;
                 }
                 (KeyCode::Char('J'), KeyModifiers::SHIFT | KeyModifiers::NONE) => {
                     self.view.concat_lines();
@@ -544,11 +546,13 @@ impl Editor {
                         if let Ok(text) = self.system_clipboard.get_text() {
                             self.view.paste(&text);
                         }
+                        self.mode = EditorMode::Normal;
                     }
                     (KeyCode::Char('P'), KeyModifiers::SHIFT | KeyModifiers::NONE) => {
                         if let Ok(text) = self.system_clipboard.get_text() {
                             self.view.paste_backward(&text);
                         }
+                        self.mode = EditorMode::Normal;
                     }
                     _ => {
                         // If unknown SPC- command, do nothing and clear buffer
