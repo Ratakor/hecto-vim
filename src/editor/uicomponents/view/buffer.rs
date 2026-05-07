@@ -11,8 +11,8 @@ use std::ops::Range;
 pub struct Buffer {
     lines: Vec<Line>,
     file_info: FileInfo,
-    undo_stack: Vec<Vec<Line>>,
-    redo_stack: Vec<Vec<Line>>,
+    undo_stack: Vec<(Vec<Line>, Location)>,
+    redo_stack: Vec<(Vec<Line>, Location)>,
 }
 
 impl Default for Buffer {
@@ -40,27 +40,27 @@ impl Buffer {
         &self.file_info
     }
 
-    fn push_undo(&mut self) {
-        self.undo_stack.push(self.lines.clone());
+    fn push_undo(&mut self, at: Location) {
+        self.undo_stack.push((self.lines.clone(), at));
         self.redo_stack.clear();
     }
 
-    pub fn undo(&mut self) -> bool {
-        if let Some(lines) = self.undo_stack.pop() {
-            self.redo_stack.push(self.lines.clone());
+    pub fn undo(&mut self, current_at: Location) -> Option<Location> {
+        if let Some((lines, at)) = self.undo_stack.pop() {
+            self.redo_stack.push((self.lines.clone(), current_at));
             self.lines = lines;
-            return true;
+            return Some(at);
         }
-        false
+        None
     }
 
-    pub fn redo(&mut self) -> bool {
-        if let Some(lines) = self.redo_stack.pop() {
-            self.undo_stack.push(self.lines.clone());
+    pub fn redo(&mut self, current_at: Location) -> Option<Location> {
+        if let Some((lines, at)) = self.redo_stack.pop() {
+            self.undo_stack.push((self.lines.clone(), current_at));
             self.lines = lines;
-            return true;
+            return Some(at);
         }
-        false
+        None
     }
 
     pub fn grapheme_count(&self, idx: LineIdx) -> GraphemeIdx {
@@ -233,7 +233,7 @@ impl Buffer {
         self.lines.len()
     }
     pub fn insert_char(&mut self, character: char, at: Location) {
-        self.push_undo();
+        self.push_undo(at);
         self.insert_char_no_undo(character, at);
     }
     fn insert_char_no_undo(&mut self, character: char, at: Location) {
@@ -245,7 +245,7 @@ impl Buffer {
         }
     }
     pub fn delete(&mut self, at: Location) {
-        self.push_undo();
+        self.push_undo(at);
         if let Some(line) = self.lines.get(at.line_idx) {
             if at.grapheme_idx >= line.grapheme_count()
                 && self.height() > at.line_idx.saturating_add(1)
@@ -266,7 +266,7 @@ impl Buffer {
         }
     }
     pub fn insert_enter(&mut self, at: Location) -> usize {
-        self.push_undo();
+        self.push_undo(at);
         let mut indent_string = if let Some(line) = self.lines.get(at.line_idx) {
             let non_whitespace_idx = line.first_non_whitespace_grapheme();
             let indent_end = std::cmp::min(non_whitespace_idx, at.grapheme_idx);
@@ -307,7 +307,7 @@ impl Buffer {
     }
 
     pub fn concat_range(&mut self, start: Location, end: Location) {
-        self.push_undo();
+        self.push_undo(start);
         let (start, end) = if start <= end {
             (start, end)
         } else {
@@ -360,7 +360,7 @@ impl Buffer {
     }
 
     pub fn delete_range(&mut self, start: Location, end: Location) {
-        self.push_undo();
+        self.push_undo(start);
         let (start, end) = if start <= end {
             (start, end)
         } else {
@@ -402,7 +402,7 @@ impl Buffer {
     }
 
     pub fn insert_string(&mut self, string: &str, at: Location) {
-        self.push_undo();
+        self.push_undo(at);
         let mut current_at = at;
         for (i, line_str) in string.split('\n').enumerate() {
             if i > 0 {
@@ -488,5 +488,31 @@ mod tests {
             redo_stack: Vec::new(),
         };
         assert_eq!(buffer.indent_size(), 2);
+    }
+
+    #[test]
+    fn test_undo_restores_location() {
+        let mut buffer = Buffer::default();
+        let loc1 = Location {
+            line_idx: 0,
+            grapheme_idx: 0,
+            preferred_grapheme_idx: 0,
+        };
+        let loc2 = Location {
+            line_idx: 0,
+            grapheme_idx: 1,
+            preferred_grapheme_idx: 1,
+        };
+
+        buffer.insert_char('a', loc1); // pushes undo with loc1
+        assert_eq!(buffer.lines[0].to_string(), "a");
+
+        let restored_loc = buffer.undo(loc2); // pushes redo with loc2
+        assert_eq!(restored_loc, Some(loc1));
+        assert_eq!(buffer.lines[0].to_string(), "");
+
+        let redone_loc = buffer.redo(loc1);
+        assert_eq!(redone_loc, Some(loc2));
+        assert_eq!(buffer.lines[0].to_string(), "a");
     }
 }

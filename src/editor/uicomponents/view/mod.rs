@@ -396,16 +396,20 @@ impl View {
             Edit::DeleteBackward => self.delete_backward(),
             Edit::InsertNewline => self.insert_newline(),
             Edit::Undo => {
-                if self.buffer.undo() {
+                if let Some(location) = self.buffer.undo(self.text_location) {
+                    self.text_location = location;
                     self.snap_to_valid_line();
                     self.snap_to_valid_grapheme();
+                    self.scroll_text_location_into_view();
                     self.set_needs_redraw(true);
                 }
             }
             Edit::Redo => {
-                if self.buffer.redo() {
+                if let Some(location) = self.buffer.redo(self.text_location) {
+                    self.text_location = location;
                     self.snap_to_valid_line();
                     self.snap_to_valid_grapheme();
+                    self.scroll_text_location_into_view();
                     self.set_needs_redraw(true);
                 }
             }
