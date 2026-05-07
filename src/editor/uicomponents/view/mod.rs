@@ -157,9 +157,7 @@ impl View {
     }
 
     pub fn get_current_character(&self) -> String {
-        let mut end = self.text_location;
-        end.grapheme_idx = end.grapheme_idx.saturating_add(1);
-        self.buffer.get_range(self.text_location, end)
+        self.buffer.get_range(self.text_location, self.text_location)
     }
 
     pub fn delete_selection(&mut self) {
@@ -450,7 +448,17 @@ impl View {
         }
     }
     fn delete(&mut self) {
-        self.buffer.delete(self.text_location);
+        let char_at_cursor = self.get_current_character();
+        let mut next_location = self.text_location;
+        next_location.grapheme_idx = next_location.grapheme_idx.saturating_add(1);
+        let char_after_cursor = self.buffer.get_range(next_location, next_location);
+
+        match (char_at_cursor.as_str(), char_after_cursor.as_str()) {
+            ("(", ")") | ("[", "]") | ("{", "}") | ("\"", "\"") | ("'", "'") | ("`", "`") => {
+                self.buffer.delete_range(self.text_location, next_location);
+            }
+            _ => self.buffer.delete(self.text_location),
+        }
         self.set_needs_redraw(true);
     }
     fn insert_char(&mut self, character: char) {
