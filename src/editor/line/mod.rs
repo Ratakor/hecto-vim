@@ -13,6 +13,7 @@ use unicode_width::UnicodeWidthStr;
 
 use super::AnnotatedString;
 use super::Annotation;
+use super::AnnotationType;
 
 #[derive(Default, Clone)]
 pub struct Line {
@@ -34,7 +35,7 @@ impl Line {
         let mut fragments = Vec::new();
         let mut current_col = 0;
         for (byte_idx, grapheme) in line_str.grapheme_indices(true) {
-            let (replacement, rendered_width) =
+            let (replacement, replacement_annotations, rendered_width) =
                 Self::get_replacement_character(grapheme, current_col).map_or_else(
                     || {
                         let unicode_width = grapheme.width();
@@ -42,11 +43,14 @@ impl Line {
                             0 | 1 => GraphemeWidth::Half,
                             _ => GraphemeWidth::Full,
                         };
-                        (None, rendered_width)
+                        (None, Vec::new(), rendered_width)
                     },
-                    |replacement| {
-                        let rendered_width = GraphemeWidth::Custom(replacement.len());
-                        (Some(replacement), rendered_width)
+                    |(replacement, annotations, rendered_width)| {
+                        (
+                            Some(replacement),
+                            annotations,
+                            GraphemeWidth::Custom(rendered_width),
+                        )
                     },
                 );
 
@@ -54,6 +58,7 @@ impl Line {
                 grapheme: grapheme.to_string(),
                 rendered_width,
                 replacement,
+                replacement_annotations,
                 start: byte_idx,
             });
             current_col += usize::from(rendered_width);
@@ -65,21 +70,33 @@ impl Line {
         self.fragments = Self::str_to_fragments(&self.string);
     }
 
-    fn get_replacement_character(for_str: &str, col: ColIdx) -> Option<String> {
+    fn get_replacement_character(
+        for_str: &str,
+        col: ColIdx,
+    ) -> Option<(String, Vec<(AnnotationType, usize, usize)>, usize)> {
         let width = for_str.width();
         match for_str {
-            " " => None,
+            " " => {
+                let replacement = String::from("·");
+                let annotations = vec![(AnnotationType::Replacement, 0, replacement.len())];
+                let rendered_size = 1; // · size is 2 because it's unicode
+                Some((replacement, annotations, rendered_size))
+            }
             "\t" => {
                 let tab_size = 8;
                 let spaces_to_add = tab_size - (col % tab_size);
-                Some(" ".repeat(spaces_to_add))
+                let mut replacement = String::from("|");
+                replacement.push_str(&" ".repeat(spaces_to_add.saturating_sub(1)));
+                let rendered_size = replacement.len();
+                let annotations = vec![(AnnotationType::Replacement, 0, rendered_size)];
+                Some((replacement, annotations, rendered_size))
             }
-            _ if width > 0 && for_str.trim().is_empty() => Some("␣".to_string()),
+            _ if width > 0 && for_str.trim().is_empty() => Some(("␣".to_string(), Vec::new(), 1)),
             _ => {
                 let mut chars = for_str.chars();
                 if let Some(ch) = chars.next() {
                     if ch.is_control() && chars.next().is_none() {
-                        return Some("▯".to_string());
+                        return Some(("▯".to_string(), Vec::new(), 1));
                     }
                 }
                 None
@@ -167,6 +184,9 @@ impl Line {
                     let start = fragment.start;
                     let end = start.saturating_add(fragment.grapheme.len());
                     result.replace(start, end, replacement);
+                    for (annotation_type, a_start, a_end) in &fragment.replacement_annotations {
+                        result.add_annotation(*annotation_type, start + a_start, start + a_end);
+                    }
                 }
             }
         }
@@ -490,21 +510,21 @@ mod tests {
     #[test]
     fn test_tabs() {
         let line = Line::from("\t");
-        assert_eq!(line.width(), 4);
-        assert_eq!(line.get_visible_graphemes(0..4), "    ");
+        assert_eq!(line.width(), 8);
+        assert_eq!(line.get_visible_graphemes(0..8), "|       ");
 
         let line = Line::from("a\t");
-        assert_eq!(line.width(), 4);
-        assert_eq!(line.get_visible_graphemes(0..4), "a   ");
+        assert_eq!(line.width(), 8);
+        assert_eq!(line.get_visible_graphemes(0..8), "a|      ");
 
         let line = Line::from("abcd\t");
         assert_eq!(line.width(), 8);
-        assert_eq!(line.get_visible_graphemes(0..8), "abcd    ");
+        assert_eq!(line.get_visible_graphemes(0..8), "abcd|   ");
 
         // Clipping
         let line = Line::from("\t");
         assert_eq!(line.get_visible_graphemes(0..2), "⋯"); // Partially visible on the right
-        assert_eq!(line.get_visible_graphemes(2..4), "⋯"); // Partially visible on the left
+        assert_eq!(line.get_visible_graphemes(6..8), "⋯"); // Partially visible on the left
     }
 
     #[test]
@@ -520,11 +540,7 @@ mod tests {
             end: 2,
         }];
         let visible = line.get_annotated_visible_substr(0..10, Some(&annotations));
-        assert_eq!(visible.to_string(), "a   b "); // 1 space for 'a', 3 for tab (it aligns to 4), 1 for 'b', 1 for virtual space
-        // Wait, "a\t" -> 'a' is at col 0. '\t' starts at col 1. Tab size 4. Next multiple of 4 is 4.
-        // So '\t' should take 4 - (1 % 4) = 3 spaces.
-        // Total width: 1 ('a') + 3 (tab) + 1 ('b') = 5.
-        // Plus virtual space: 6.
-        assert_eq!(visible.to_string().len(), 6);
+        assert_eq!(visible.to_string(), "a|      b "); // 1 space for 'a', 7 for tab, 1 for 'b', 1 for virtual space
+        assert_eq!(visible.to_string().len(), 10);
     }
 }

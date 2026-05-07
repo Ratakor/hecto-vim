@@ -191,6 +191,14 @@ impl From<AnnotationType> for Attribute {
                     b: 161,
                 }),
             },
+            AnnotationType::Replacement => Self {
+                foreground: Some(Color::Rgb {
+                    r: 60,
+                    g: 56,
+                    b: 54,
+                }),
+                background: None,
+            },
         }
     }
 }

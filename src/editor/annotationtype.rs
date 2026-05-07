@@ -21,4 +21,5 @@ pub enum AnnotationType {
     Macro,
     Attribute,
     Selection,
+    Replacement,
 }
