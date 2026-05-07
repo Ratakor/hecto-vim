@@ -236,6 +236,14 @@ impl Buffer {
         self.push_undo(at);
         self.insert_char_no_undo(character, at);
     }
+    pub fn replace_char(&mut self, character: char, at: Location) {
+        self.push_undo(at);
+        if let Some(line) = self.lines.get_mut(at.line_idx) {
+            if at.grapheme_idx < line.grapheme_count() {
+                line.replace_char(character, at.grapheme_idx);
+            }
+        }
+    }
     fn insert_char_no_undo(&mut self, character: char, at: Location) {
         debug_assert!(at.line_idx <= self.height());
         if at.line_idx == self.height() {
@@ -514,5 +522,23 @@ mod tests {
         let redone_loc = buffer.redo(loc1);
         assert_eq!(redone_loc, Some(loc2));
         assert_eq!(buffer.lines[0].to_string(), "a");
+    }
+
+    #[test]
+    fn test_replace_char() {
+        let mut buffer = Buffer {
+            lines: vec![Line::from("hello")],
+            file_info: FileInfo::default(),
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
+        };
+        let at = Location {
+            line_idx: 0,
+            grapheme_idx: 0,
+            preferred_grapheme_idx: 0,
+        };
+        buffer.replace_char('H', at);
+        assert_eq!(buffer.lines[0].to_string(), "Hello");
+        assert!(buffer.can_undo());
     }
 }

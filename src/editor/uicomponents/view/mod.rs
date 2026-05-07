@@ -392,6 +392,7 @@ impl View {
     pub fn handle_edit_command(&mut self, command: Edit) {
         match command {
             Edit::Insert(character) => self.insert_char(character),
+            Edit::Replace(character) => self.replace_char(character),
             Edit::Delete => self.delete(),
             Edit::DeleteBackward => self.delete_backward(),
             Edit::InsertNewline => self.insert_newline(),
@@ -501,6 +502,10 @@ impl View {
             }
             _ => self.buffer.delete(self.text_location),
         }
+        self.set_needs_redraw(true);
+    }
+    fn replace_char(&mut self, character: char) {
+        self.buffer.replace_char(character, self.text_location);
         self.set_needs_redraw(true);
     }
     fn insert_char(&mut self, character: char) {

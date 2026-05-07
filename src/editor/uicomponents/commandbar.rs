@@ -24,6 +24,11 @@ impl CommandBar {
                 self.value.insert_char(character, self.caret_pos);
                 self.caret_pos = self.caret_pos.saturating_add(1);
             }
+            Edit::Replace(character) => {
+                if self.caret_pos < self.value.grapheme_count() {
+                    self.value.replace_char(character, self.caret_pos);
+                }
+            }
             Edit::Delete => {
                 if self.caret_pos < self.value.grapheme_count() {
                     self.value.delete(self.caret_pos);

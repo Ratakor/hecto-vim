@@ -5,6 +5,7 @@ use crossterm::event::{
 #[derive(Clone, Copy)]
 pub enum Edit {
     Insert(char),
+    Replace(char),
     InsertNewline,
     Delete,
     DeleteBackward,

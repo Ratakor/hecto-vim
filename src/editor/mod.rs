@@ -264,6 +264,7 @@ impl Editor {
             "  i          : Insert mode",
             "  a          : Append (Right + Insert)",
             "  o, O       : Open line below/above + Insert",
+            "  r          : Replace character",
             "  u, U       : Undo, Redo",
             "  p          : Paste clipboard",
             "  SPC p/P    : Paste from system clipboard",
@@ -371,6 +372,9 @@ impl Editor {
                     return false;
                 }
                 (KeyCode::Char(' '), KeyModifiers::NONE) => {
+                    return false;
+                }
+                (KeyCode::Char('r'), KeyModifiers::NONE) => {
                     return false;
                 }
                 (KeyCode::Char('i'), KeyModifiers::NONE) => {
@@ -499,6 +503,11 @@ impl Editor {
             }
 
             match (first_code, first_mod) {
+                (KeyCode::Char('r'), KeyModifiers::NONE) => {
+                    if let KeyCode::Char(c) = second_code {
+                        self.process_command(Command::Edit(Edit::Replace(c)));
+                    }
+                }
                 (KeyCode::Char('g'), KeyModifiers::NONE) => match (second_code, second_mod) {
                     (KeyCode::Char('g'), KeyModifiers::NONE) => {
                         self.process_command(Command::Move(Move::BufferStart));

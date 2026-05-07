@@ -247,6 +247,15 @@ impl Line {
         }
         self.rebuild_fragments();
     }
+    pub fn replace_char(&mut self, character: char, at: GraphemeIdx) {
+        debug_assert!(at < self.grapheme_count());
+        if let Some(fragment) = self.fragments.get(at) {
+            let start = fragment.start;
+            let end = fragment.start.saturating_add(fragment.grapheme.len());
+            self.string.replace_range(start..end, &character.to_string());
+            self.rebuild_fragments();
+        }
+    }
     pub fn append_char(&mut self, character: char) {
         self.insert_char(character, self.grapheme_count());
     }
@@ -426,6 +435,15 @@ mod tests {
         assert_eq!(line.string, "ello");
         line.delete(3);
         assert_eq!(line.string, "ell");
+    }
+
+    #[test]
+    fn test_replace_char() {
+        let mut line = Line::from("hello");
+        line.replace_char('H', 0);
+        assert_eq!(line.string, "Hello");
+        line.replace_char('!', 4);
+        assert_eq!(line.string, "Hell!");
     }
 
     #[test]
