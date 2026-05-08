@@ -1,6 +1,6 @@
 use std::fmt::{Display, Formatter, Result};
 
-#[derive(Default, Eq, PartialEq, Debug, Copy, Clone)]
+#[derive(Default, Eq, PartialEq, Hash, Debug, Copy, Clone)]
 pub enum FileType {
     Rust,
     JavaScript,

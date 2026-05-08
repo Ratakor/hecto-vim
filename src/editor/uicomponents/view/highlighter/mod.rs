@@ -2,8 +2,10 @@ use super::super::super::{Annotation, AnnotationType, FileType, Line};
 use crate::prelude::*;
 mod selectionhighlighter;
 mod syntaxhighlighter;
+mod diagnostichighlighter;
 use searchresulthighlighter::SearchResultHighlighter;
 use selectionhighlighter::SelectionHighlighter;
+use diagnostichighlighter::DiagnosticHighlighter;
 pub use syntaxhighlighter::SyntaxHighlighter;
 mod searchresulthighlighter;
 mod treesitterhighlighter;
@@ -23,6 +25,7 @@ pub struct Highlighter<'a> {
     syntax_highlighter: Option<&'a mut (dyn SyntaxHighlighter + 'static)>,
     search_result_highlighter: Option<SearchResultHighlighter<'a>>,
     selection_highlighter: Option<SelectionHighlighter>,
+    diagnostic_highlighter: Option<DiagnosticHighlighter>,
 }
 
 impl<'a> Highlighter<'a> {
@@ -30,16 +33,20 @@ impl<'a> Highlighter<'a> {
         matched_word: Option<&'a str>,
         selected_match: Option<Location>,
         selection: Option<(Location, Location)>,
+        diagnostics: Option<Vec<lsp_types::Diagnostic>>,
         syntax_highlighter: Option<&'a mut (dyn SyntaxHighlighter + 'static)>,
     ) -> Self {
         let search_result_highlighter = matched_word
             .map(|matched_word| SearchResultHighlighter::new(matched_word, selected_match));
         let selection_highlighter =
             selection.map(|(start, end)| SelectionHighlighter::new(start, end));
+        let diagnostic_highlighter =
+            diagnostics.map(DiagnosticHighlighter::new);
         Self {
             syntax_highlighter,
             search_result_highlighter,
             selection_highlighter,
+            diagnostic_highlighter,
         }
     }
     pub fn get_annotations(&self, idx: LineIdx, line: &Line) -> Vec<Annotation> {
@@ -57,6 +64,11 @@ impl<'a> Highlighter<'a> {
         }
         if let Some(selection_highlighter) = &self.selection_highlighter {
             if let Some(annotations) = selection_highlighter.get_annotations(idx, line) {
+                result.extend(annotations.iter().copied());
+            }
+        }
+        if let Some(diagnostic_highlighter) = &self.diagnostic_highlighter {
+            if let Some(annotations) = diagnostic_highlighter.get_annotations(idx, line) {
                 result.extend(annotations.iter().copied());
             }
         }

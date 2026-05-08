@@ -311,6 +311,22 @@ impl Line {
             .get(grapheme_idx)
             .map_or(0, |fragment| fragment.start)
     }
+    pub fn utf16_code_unit_to_byte_idx(&self, utf16_idx: usize) -> ByteIdx {
+        let mut current_utf16_idx = 0;
+        let mut current_byte_idx = 0;
+        for c in self.string.chars() {
+            if current_utf16_idx >= utf16_idx {
+                return current_byte_idx;
+            }
+            current_utf16_idx += c.len_utf16();
+            current_byte_idx += c.len_utf8();
+        }
+        current_byte_idx
+    }
+    pub fn utf16_code_unit_to_grapheme_idx(&self, utf16_idx: usize) -> GraphemeIdx {
+        let byte_idx = self.utf16_code_unit_to_byte_idx(utf16_idx);
+        self.byte_idx_to_grapheme_idx(byte_idx).unwrap_or(self.grapheme_count())
+    }
     pub fn search_forward(
         &self,
         query: &str,

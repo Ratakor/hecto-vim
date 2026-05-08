@@ -255,6 +255,9 @@ impl Buffer {
     pub fn height(&self) -> LineIdx {
         self.lines.len()
     }
+    pub fn get_line(&self, idx: LineIdx) -> Option<&Line> {
+        self.lines.get(idx)
+    }
     pub fn insert_char(&mut self, character: char, at: Location) {
         self.push_undo(at);
         self.insert_char_no_undo(character, at);
@@ -398,36 +401,33 @@ impl Buffer {
             (end, start)
         };
 
-        let mut lines_to_remove_until = end.line_idx;
-        let mut suffix = String::new();
-
-        if let Some(last_line) = self.lines.get(end.line_idx) {
-            if end.grapheme_idx >= last_line.grapheme_count() {
-                if end.line_idx < self.height().saturating_sub(1) {
-                    lines_to_remove_until = end.line_idx.saturating_add(1);
-                    // clippy::indexing_slicing: We checked that lines_to_remove_until is within bounds
-                    #[allow(clippy::indexing_slicing)]
-                    suffix.push_str(&self.lines[lines_to_remove_until]);
+        if start.line_idx == end.line_idx {
+            if let Some(line) = self.lines.get_mut(start.line_idx) {
+                for _ in start.grapheme_idx..end.grapheme_idx {
+                    line.delete(start.grapheme_idx);
                 }
+            }
+        } else {
+            // Multiline delete
+            // 1. Keep prefix of first line
+            let suffix = if let Some(last_line) = self.lines.get(end.line_idx) {
+                last_line.get_substring(end.grapheme_idx..last_line.grapheme_count())
             } else {
-                suffix = last_line
-                    .get_substring(end.grapheme_idx.saturating_add(1)..last_line.grapheme_count());
-            }
-        }
+                String::new()
+            };
 
-        if let Some(first_line) = self.lines.get_mut(start.line_idx) {
-            while first_line.grapheme_count() > start.grapheme_idx {
-                first_line.delete(start.grapheme_idx);
+            if let Some(first_line) = self.lines.get_mut(start.line_idx) {
+                while first_line.grapheme_count() > start.grapheme_idx {
+                    first_line.delete(start.grapheme_idx);
+                }
+                first_line.append(&Line::from(&suffix));
             }
-            first_line.append_char(' '); // Temporarily add a char to avoid being empty if needed? No, rebuild_fragments handles empty.
-            first_line.delete_last(); // Remove the temp char.
-            // Actually, just push_str and rebuild.
-            first_line.append(&Line::from(&suffix)); // Use append for convenience
-        }
 
-        for _ in start.line_idx..lines_to_remove_until {
-            if start.line_idx.saturating_add(1) < self.lines.len() {
-                self.lines.remove(start.line_idx.saturating_add(1));
+            // 2. Remove intermediate and last lines
+            for _ in start.line_idx..end.line_idx {
+                if start.line_idx.saturating_add(1) < self.lines.len() {
+                    self.lines.remove(start.line_idx.saturating_add(1));
+                }
             }
         }
     }

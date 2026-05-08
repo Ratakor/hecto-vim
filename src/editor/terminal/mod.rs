@@ -15,6 +15,7 @@ use crossterm::{queue, Command};
 use std::io::{stdout, Error, Write};
 
 use super::AnnotatedString;
+use super::AnnotationType;
 
 /// Represents the Terminal.
 /// Edge Case for platforms where `usize` < `u16`:
@@ -122,6 +123,7 @@ impl Terminal {
         row: RowIdx,
         col: ColIdx,
         annotated_string: &AnnotatedString,
+        diagnostic: Option<(&str, AnnotationType)>,
     ) -> Result<(), Error> {
         Self::move_caret_to(Position { col, row })?;
         Self::clear_line()?;
@@ -137,6 +139,16 @@ impl Terminal {
                 Self::reset_color()?;
                 Ok(())
             })?;
+
+        if let Some((message, annotation_type)) = diagnostic {
+            let attribute: Attribute = annotation_type.into();
+            if let Some(foreground) = attribute.background {
+                // Use background color as foreground for the message
+                Self::set_foreground_color(foreground)?;
+            }
+            Self::print(&format!("  {}", message))?;
+            Self::reset_color()?;
+        }
         Ok(())
     }
     fn set_attribute(attribute: &Attribute) -> Result<(), Error> {

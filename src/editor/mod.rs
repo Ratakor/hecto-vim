@@ -18,9 +18,13 @@ pub mod annotationtype;
 mod command;
 mod documentstatus;
 mod line;
+mod lsp;
 mod terminal;
 mod uicomponents;
+
 pub use annotationtype::AnnotationType;
+use lsp::{LspManager, LspMessage};
+use serde_json::json;
 mod annotation;
 use annotation::Annotation;
 mod filetype;
@@ -30,7 +34,7 @@ use filetype::FileType;
 use line::Line;
 use terminal::Terminal;
 use uicomponents::{
-    CommandBar, ContextMenu, ContextMenuAction, MessageBar, StatusBar, UIComponent, View,
+    CommandBar, ContextMenu, ContextMenuAction, InfoPopup, MessageBar, StatusBar, UIComponent, View,
 };
 
 use self::command::{Command, Edit, Move, System};
@@ -82,6 +86,11 @@ HELP - ALL COMMANDS
   :prev, :p  : Previous buffer
   :o [path]  : Open file
   :help      : Show this help
+
+[LSP]
+  gd         : Go to Definition
+  SPC k      : Hover (show documentation)
+  :format    : Format current buffer
 ";
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -124,12 +133,22 @@ impl PromptType {
     }
 }
 
+#[derive(Copy, Clone, Debug, PartialEq)]
+enum LspRequestType {
+    Hover,
+    Definition,
+    Formatting,
+}
+
 pub struct Editor {
     should_quit: bool,
     views: Vec<View>,
     current_view_idx: usize,
     jump_list: Vec<JumpEntry>,
     jump_index: usize,
+    lsp_manager: LspManager,
+    pending_requests: std::collections::HashMap<lsp::RequestId, (usize, LspRequestType)>,
+    info_popup: Option<InfoPopup>,
     status_bar: StatusBar,
     message_bar: MessageBar,
     command_bar: CommandBar,
@@ -170,6 +189,9 @@ impl Editor {
                 location: Location::default(),
             }],
             jump_index: 0,
+            lsp_manager: LspManager::new(),
+            pending_requests: std::collections::HashMap::new(),
+            info_popup: None,
             status_bar: StatusBar::default(),
             message_bar: MessageBar::default(),
             command_bar: CommandBar::default(),
@@ -196,6 +218,7 @@ impl Editor {
                 if editor.views[0].load(file_name).is_err() {
                     editor.update_message(&format!("ERR: Could not open file: {file_name}"));
                 } else {
+                    editor.notify_lsp_did_open(0);
                     first = false;
                 }
             } else {
@@ -208,6 +231,7 @@ impl Editor {
                     editor.update_message(&format!("ERR: Could not open file: {file_name}"));
                 } else {
                     editor.views.push(new_view);
+                    editor.notify_lsp_did_open(editor.views.len() - 1);
                 }
             }
         }
@@ -251,6 +275,254 @@ impl Editor {
                 self.refresh_status();
                 self.refresh_screen();
             }
+
+            if self.handle_lsp_messages() {
+                self.refresh_status();
+                self.refresh_screen();
+            }
+        }
+    }
+
+    fn handle_lsp_messages(&mut self) -> bool {
+        let messages = self.lsp_manager.poll_messages();
+        let handled = !messages.is_empty();
+        for (file_type, msg) in messages {
+            match msg {
+                LspMessage::Notification(notification) => {
+                    if notification.method == "textDocument/publishDiagnostics" {
+                        self.handle_diagnostics(file_type, notification.params);
+                    }
+                }
+                LspMessage::Response(response) => {
+                    self.handle_lsp_response(file_type, response);
+                }
+            }
+        }
+        handled
+    }
+
+    fn handle_diagnostics(&mut self, _file_type: FileType, params: serde_json::Value) {
+        if let Ok(params) = serde_json::from_value::<lsp_types::PublishDiagnosticsParams>(params) {
+            let uri = params.uri.to_string();
+            for view in &mut self.views {
+                if view.get_uri() == uri {
+                    view.update_diagnostics(params.diagnostics.clone());
+                }
+            }
+        }
+    }
+
+    fn handle_lsp_response(&mut self, _file_type: FileType, response: lsp::JsonRpcResponse) {
+        if let Some(id) = response.id {
+            if let Some((view_idx, req_type)) = self.pending_requests.remove(&id) {
+                if let Some(result) = response.result {
+                    match req_type {
+                        LspRequestType::Hover => {
+                            if let Ok(hover) = serde_json::from_value::<lsp_types::Hover>(result) {
+                                let text = match hover.contents {
+                                    lsp_types::HoverContents::Scalar(marked_string) => {
+                                        match marked_string {
+                                            lsp_types::MarkedString::String(s) => s,
+                                            lsp_types::MarkedString::LanguageString(ls) => ls.value,
+                                        }
+                                    }
+                                    lsp_types::HoverContents::Array(vec) => vec
+                                        .iter()
+                                        .map(|ms| match ms {
+                                            lsp_types::MarkedString::String(s) => s.clone(),
+                                            lsp_types::MarkedString::LanguageString(ls) => {
+                                                ls.value.clone()
+                                            }
+                                        })
+                                        .collect::<Vec<_>>()
+                                        .join("\n"),
+                                    lsp_types::HoverContents::Markup(markup) => markup.value,
+                                };
+                                if !text.is_empty() {
+                                    let pos = self.views[view_idx].caret_position();
+                                    self.info_popup =
+                                        Some(InfoPopup::new(pos, self.terminal_size, &text));
+                                }
+                            }
+                        }
+                        LspRequestType::Definition => {
+                            if let Ok(goto) =
+                                serde_json::from_value::<lsp_types::GotoDefinitionResponse>(result)
+                            {
+                                let target = match goto {
+                                    lsp_types::GotoDefinitionResponse::Scalar(loc) => Some(loc),
+                                    lsp_types::GotoDefinitionResponse::Array(vec) => {
+                                        vec.get(0).cloned()
+                                    }
+                                    lsp_types::GotoDefinitionResponse::Link(vec) => {
+                                        vec.get(0).map(|link| lsp_types::Location {
+                                            uri: link.target_uri.clone(),
+                                            range: link.target_range,
+                                        })
+                                    }
+                                };
+
+                                if let Some(loc) = target {
+                                    self.open_file_from_uri(loc.uri.as_str(), loc.range.start);
+                                }
+                            }
+                        }
+                        LspRequestType::Formatting => {
+                            if let Ok(Some(edits)) =
+                                serde_json::from_value::<Option<Vec<lsp_types::TextEdit>>>(result)
+                            {
+                                self.views[view_idx].apply_lsp_edits(edits);
+                                self.notify_lsp_did_change(view_idx);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fn open_file_from_uri(&mut self, uri: &str, pos: lsp_types::Position) {
+        if let Some(path) = uri.strip_prefix("file://") {
+            let path_str = percent_encoding::percent_decode_str(path)
+                .decode_utf8_lossy()
+                .into_owned();
+            // Check if already open
+            let mut found_idx = None;
+            for (i, view) in self.views.iter().enumerate() {
+                if view.get_uri() == uri {
+                    found_idx = Some(i);
+                    break;
+                }
+            }
+
+            if let Some(idx) = found_idx {
+                self.current_view_idx = idx;
+            } else {
+                let mut new_view = View::default();
+                new_view.resize(Size {
+                    height: self.terminal_size.height.saturating_sub(2),
+                    width: self.terminal_size.width,
+                });
+                if new_view.load(&path_str).is_ok() {
+                    self.views.push(new_view);
+                    self.current_view_idx = self.views.len() - 1;
+                    self.notify_lsp_did_open(self.current_view_idx);
+                } else {
+                    return;
+                }
+            }
+
+            self.views[self.current_view_idx].set_lsp_location(pos);
+        }
+    }
+
+    fn notify_lsp_did_open(&mut self, view_idx: usize) {
+        let view = &self.views[view_idx];
+        let file_type = view.get_status(String::new()).file_type;
+        let uri = view.get_uri();
+        if uri.is_empty() {
+            return;
+        }
+
+        if let Some(client) = self.lsp_manager.get_client(file_type) {
+            let params = json!({
+                "textDocument": {
+                    "uri": uri,
+                    "languageId": match file_type {
+                        FileType::Rust => "rust",
+                        FileType::JavaScript => "javascript",
+                        FileType::Zig => "zig",
+                        FileType::Text => "text",
+                    },
+                    "version": 1,
+                    "text": view.get_text()
+                }
+            });
+            client.send_notification("textDocument/didOpen", params);
+        }
+    }
+
+    fn notify_lsp_did_change(&mut self, view_idx: usize) {
+        let view = &self.views[view_idx];
+        let file_type = view.get_status(String::new()).file_type;
+        let uri = view.get_uri();
+        if uri.is_empty() {
+            return;
+        }
+
+        if let Some(client) = self.lsp_manager.get_client(file_type) {
+            let params = json!({
+                "textDocument": {
+                    "uri": uri,
+                    "version": 2 // Simplification: we should track version per view
+                },
+                "contentChanges": [{
+                    "text": view.get_text()
+                }]
+            });
+            client.send_notification("textDocument/didChange", params);
+        }
+    }
+
+    fn lsp_hover(&mut self) {
+        let view = &self.views[self.current_view_idx];
+        let file_type = view.get_status(String::new()).file_type;
+        let uri = view.get_uri();
+        if uri.is_empty() {
+            return;
+        }
+
+        if let Some(client) = self.lsp_manager.get_client(file_type) {
+            let params = json!({
+                "textDocument": { "uri": uri },
+                "position": view.get_lsp_position()
+            });
+            let id = client.send_request("textDocument/hover", params);
+            self.pending_requests
+                .insert(id, (self.current_view_idx, LspRequestType::Hover));
+        }
+    }
+
+    fn lsp_goto_definition(&mut self) {
+        self.record_jump();
+        let view = &self.views[self.current_view_idx];
+        let file_type = view.get_status(String::new()).file_type;
+        let uri = view.get_uri();
+        if uri.is_empty() {
+            return;
+        }
+
+        if let Some(client) = self.lsp_manager.get_client(file_type) {
+            let params = json!({
+                "textDocument": { "uri": uri },
+                "position": view.get_lsp_position()
+            });
+            let id = client.send_request("textDocument/definition", params);
+            self.pending_requests
+                .insert(id, (self.current_view_idx, LspRequestType::Definition));
+        }
+    }
+
+    fn lsp_format(&mut self) {
+        self.record_jump();
+        let view = &self.views[self.current_view_idx];
+        let file_type = view.get_status(String::new()).file_type;
+        let uri = view.get_uri();
+        if uri.is_empty() {
+            return;
+        }
+
+        if let Some(client) = self.lsp_manager.get_client(file_type) {
+            let params = json!({
+                "textDocument": { "uri": uri },
+                "options": {
+                    "tabSize": 4,
+                    "insertSpaces": true
+                }
+            });
+            let id = client.send_request("textDocument/formatting", params);
+            self.pending_requests
+                .insert(id, (self.current_view_idx, LspRequestType::Formatting));
         }
     }
 
@@ -279,6 +551,10 @@ impl Editor {
         if let Some(menu) = &mut self.context_menu {
             menu.set_needs_redraw(true);
             menu.render(0);
+        }
+        if let Some(popup) = &mut self.info_popup {
+            popup.set_needs_redraw(true);
+            popup.render(0);
         }
         let new_caret_pos = if self.in_prompt() {
             Position {
@@ -355,6 +631,7 @@ impl Editor {
         }
 
         if let Event::Key(key_event) = event {
+            self.info_popup = None;
             if !self.in_prompt() {
                 match self.mode {
                     EditorMode::Normal | EditorMode::Visual => {
@@ -581,6 +858,10 @@ impl Editor {
                         }
                         self.count = None;
                     }
+                    (KeyCode::Char('d'), KeyModifiers::NONE) => {
+                        self.lsp_goto_definition();
+                        self.count = None;
+                    }
                     (KeyCode::Char('e'), KeyModifiers::NONE) => {
                         self.process_command(Command::Move(Move::BufferEnd));
                         self.count = None;
@@ -657,6 +938,9 @@ impl Editor {
                         } else {
                             self.process_command(Command::Edit(Edit::Delete));
                         }
+                    }
+                    (KeyCode::Char('k'), KeyModifiers::NONE) => {
+                        self.lsp_hover();
                     }
                     _ => {
                         // If unknown SPC- command, do nothing and clear buffer
@@ -828,6 +1112,7 @@ impl Editor {
                 }
                 self.views[self.current_view_idx].clear_selection();
                 self.views[self.current_view_idx].handle_edit_command(edit_command);
+                self.notify_lsp_did_change(self.current_view_idx);
             }
             Command::Move(move_command) => {
                 if self.mode == EditorMode::Normal {
@@ -892,6 +1177,7 @@ impl Editor {
                 }
             }
             "syntax" => self.views[self.current_view_idx].toggle_syntax(),
+            "fmt" | "format" => self.lsp_format(),
             "wq" | "x" => {
                 if let Some(path) = arg {
                     self.save(Some(path));
@@ -931,6 +1217,7 @@ impl Editor {
                     } else {
                         self.views.push(new_view);
                         self.current_view_idx = self.views.len() - 1;
+                        self.notify_lsp_did_open(self.current_view_idx);
                         self.update_message(&format!("Opened file: {path}"));
                         self.reset_quit_times();
                     }
@@ -1155,9 +1442,10 @@ impl Editor {
             if parts.len() == 1 && !current_value.ends_with(' ') {
                 let cmd_to_complete = parts[0];
                 let commands = [
-                    "q", "quit", "q!", "quit!", "w", "write", "syntax", "wq", "x", "p", "prev",
-                    "n", "next", "o", "open", "h", "help",
+                    "q", "quit", "q!", "quit!", "w", "write", "syntax", "format", "wq", "x", "p",
+                    "prev", "n", "next", "o", "open", "h", "help",
                 ];
+
                 matches = commands
                     .iter()
                     .filter(|cmd| cmd.starts_with(cmd_to_complete))

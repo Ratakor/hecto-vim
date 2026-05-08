@@ -22,4 +22,8 @@ pub enum AnnotationType {
     Attribute,
     Selection,
     Replacement,
+    Error,
+    Warning,
+    Information,
+    Hint,
 }

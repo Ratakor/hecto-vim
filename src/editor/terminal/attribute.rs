@@ -199,6 +199,42 @@ impl From<AnnotationType> for Attribute {
                 }),
                 background: None,
             },
+            AnnotationType::Error => Self {
+                foreground: None,
+                background: Some(Color::Rgb {
+                    r: 204,
+                    g: 36,
+                    b: 29,
+                }),
+            },
+            AnnotationType::Warning => Self {
+                foreground: Some(Color::Rgb {
+                    r: 40,
+                    g: 40,
+                    b: 40,
+                }),
+                background: Some(Color::Rgb {
+                    r: 214,
+                    g: 93,
+                    b: 14,
+                }),
+            },
+            AnnotationType::Information => Self {
+                foreground: None,
+                background: Some(Color::Rgb {
+                    r: 69,
+                    g: 133,
+                    b: 136,
+                }),
+            },
+            AnnotationType::Hint => Self {
+                foreground: None,
+                background: Some(Color::Rgb {
+                    r: 142,
+                    g: 192,
+                    b: 124,
+                }),
+            },
         }
     }
 }

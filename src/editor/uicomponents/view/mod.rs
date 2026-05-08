@@ -7,7 +7,7 @@ use crate::prelude::*;
 
 use super::UIComponent;
 use crate::editor::command::{Edit, Move};
-use crate::editor::{DocumentStatus, Line, Terminal};
+use crate::editor::{AnnotationType, DocumentStatus, Line, Terminal};
 mod buffer;
 use buffer::Buffer;
 mod searchdirection;
@@ -29,6 +29,7 @@ pub struct View {
     search_info: Option<SearchInfo>,
     syntax_highlighter: Option<Box<dyn SyntaxHighlighter>>,
     syntax_enabled: bool,
+    diagnostics: Vec<lsp_types::Diagnostic>,
 }
 
 impl Default for View {
@@ -43,6 +44,7 @@ impl Default for View {
             search_info: None,
             syntax_highlighter: None,
             syntax_enabled: false,
+            diagnostics: Vec::new(),
         }
     }
 }
@@ -83,6 +85,64 @@ impl View {
             file_type: file_info.get_file_type(),
             mode,
         }
+    }
+
+    pub fn get_uri(&self) -> String {
+        if let Some(path) = self.buffer.get_file_info().get_path() {
+            if let Ok(abs_path) = std::fs::canonicalize(path) {
+                return format!("file://{}", abs_path.display());
+            }
+        }
+        String::new()
+    }
+
+    pub fn get_lsp_position(&self) -> lsp_types::Position {
+        lsp_types::Position {
+            line: self.text_location.line_idx as u32,
+            character: self.text_location.grapheme_idx as u32,
+        }
+    }
+
+    pub fn update_diagnostics(&mut self, diagnostics: Vec<lsp_types::Diagnostic>) {
+        self.diagnostics = diagnostics;
+        self.set_needs_redraw(true);
+    }
+
+    pub fn get_diagnostics_at(&self, pos: lsp_types::Position) -> Vec<lsp_types::Diagnostic> {
+        self.diagnostics
+            .iter()
+            .filter(|d| {
+                let r = d.range;
+                pos >= r.start && pos < r.end
+            })
+            .cloned()
+            .collect()
+    }
+
+    pub fn get_text(&self) -> String {
+        self.buffer.as_string()
+    }
+
+    pub fn apply_lsp_edits(&mut self, edits: Vec<lsp_types::TextEdit>) {
+        // Sort edits in reverse order to not invalidate indices as we apply them
+        let mut sorted_edits = edits;
+        sorted_edits.sort_by(|a, b| b.range.start.cmp(&a.range.start));
+
+        for edit in sorted_edits {
+            let start = Location {
+                line_idx: edit.range.start.line as usize,
+                grapheme_idx: edit.range.start.character as usize,
+                preferred_grapheme_idx: 0,
+            };
+            let end = Location {
+                line_idx: edit.range.end.line as usize,
+                grapheme_idx: edit.range.end.character as usize,
+                preferred_grapheme_idx: 0,
+            };
+            self.buffer.delete_range(start, end);
+            self.buffer.insert_string(&edit.new_text, start);
+        }
+        self.set_needs_redraw(true);
     }
 
     pub fn start_selection(&mut self) {
@@ -471,6 +531,19 @@ impl View {
         self.set_needs_redraw(true);
     }
 
+    pub fn set_lsp_location(&mut self, pos: lsp_types::Position) {
+        self.text_location.line_idx = pos.line as usize;
+        self.snap_to_valid_line();
+        if let Some(line) = self.buffer.get_line(self.text_location.line_idx) {
+            self.text_location.grapheme_idx = line.utf16_code_unit_to_grapheme_idx(pos.character as usize);
+        } else {
+            self.text_location.grapheme_idx = 0;
+        }
+        self.text_location.preferred_grapheme_idx = self.text_location.grapheme_idx;
+        self.scroll_text_location_into_view();
+        self.set_needs_redraw(true);
+    }
+
     pub fn move_to_position(&mut self, position: Position) {
         let gutter_width = self.gutter_width();
         let col = position
@@ -845,8 +918,13 @@ impl UIComponent for View {
         } else {
             None
         };
-        let mut highlighter =
-            Highlighter::new(query, selected_match, selection, syntax_highlighter);
+        let mut highlighter = Highlighter::new(
+            query,
+            selected_match,
+            selection,
+            Some(self.diagnostics.clone()),
+            syntax_highlighter,
+        );
 
         for current_row in origin_row..end_y {
             // to get the correct line index, we have to take current_row (the absolute row on screen),
@@ -899,7 +977,31 @@ impl UIComponent for View {
                 self.buffer
                     .get_highlighted_substring(line_idx, left..right, &highlighter)
             {
-                Terminal::print_annotated_row_at(current_row, gutter_width, &annotated_string)?;
+                let diagnostic = self
+                    .diagnostics
+                    .iter()
+                    .find(|d| d.range.start.line as usize == line_idx)
+                    .map(|d| {
+                        let msg = d.message.lines().next().unwrap_or("");
+                        let annotation_type = match d.severity {
+                            Some(lsp_types::DiagnosticSeverity::ERROR) => AnnotationType::Error,
+                            Some(lsp_types::DiagnosticSeverity::WARNING) => {
+                                AnnotationType::Warning
+                            }
+                            Some(lsp_types::DiagnosticSeverity::INFORMATION) => {
+                                AnnotationType::Information
+                            }
+                            Some(lsp_types::DiagnosticSeverity::HINT) => AnnotationType::Hint,
+                            _ => AnnotationType::Error,
+                        };
+                        (msg, annotation_type)
+                    });
+                Terminal::print_annotated_row_at(
+                    current_row,
+                    gutter_width,
+                    &annotated_string,
+                    diagnostic,
+                )?;
             } else {
                 Terminal::print_row_at(current_row, gutter_width, "")?;
             }
