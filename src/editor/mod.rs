@@ -54,6 +54,7 @@ HELP - ALL COMMANDS
   a          : Append (Right + Insert)
   o, O       : Open line below/above + Insert
   rX         : Replace character under cursor with X
+  R          : Enter Replace mode
   u, U       : Undo, Redo
   p          : Paste from internal clipboard
   P          : Paste before from internal clipboard
@@ -83,7 +84,6 @@ HELP - ALL COMMANDS
   :help      : Show this help
 ";
 
-
 #[derive(Copy, Clone, Debug, PartialEq)]
 struct JumpEntry {
     view_idx: usize,
@@ -96,6 +96,7 @@ pub enum EditorMode {
     Normal,
     Insert,
     Visual,
+    Replace,
 }
 
 impl std::fmt::Display for EditorMode {
@@ -104,6 +105,7 @@ impl std::fmt::Display for EditorMode {
             Self::Normal => write!(f, "NORMAL"),
             Self::Insert => write!(f, "INSERT"),
             Self::Visual => write!(f, "VISUAL"),
+            Self::Replace => write!(f, "REPLACE"),
         }
     }
 }
@@ -370,7 +372,17 @@ impl Editor {
                                 self.process_command(Command::Move(Move::Left(1)));
                                 self.move_left_on_escape = false;
                             }
-                            self.update_message("");
+                            return;
+                        }
+                    }
+                    EditorMode::Replace => {
+                        if key_event.code == KeyCode::Esc {
+                            self.mode = EditorMode::Normal;
+                            let _ = Terminal::set_cursor_style(SetCursorStyle::SteadyBlock);
+                            return;
+                        }
+                        if let KeyCode::Char(c) = key_event.code {
+                            self.views[self.current_view_idx].handle_replace_mode_char(c);
                             return;
                         }
                     }
@@ -422,6 +434,10 @@ impl Editor {
                 }
                 (KeyCode::Char('i'), KeyModifiers::NONE) => {
                     self.enter_insert_mode(false);
+                }
+                (KeyCode::Char('R'), KeyModifiers::SHIFT | KeyModifiers::NONE) => {
+                    self.mode = EditorMode::Replace;
+                    let _ = Terminal::set_cursor_style(SetCursorStyle::SteadyUnderScore);
                 }
                 (KeyCode::Char('a'), KeyModifiers::NONE) => {
                     self.process_command(Command::Move(Move::Right(1)));

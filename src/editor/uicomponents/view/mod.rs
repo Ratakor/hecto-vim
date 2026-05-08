@@ -528,6 +528,15 @@ impl View {
         self.buffer.replace_char(character, self.text_location);
         self.set_needs_redraw(true);
     }
+    pub fn handle_replace_mode_char(&mut self, character: char) {
+        if self.text_location.grapheme_idx < self.buffer.grapheme_count(self.text_location.line_idx) {
+            self.buffer.replace_char(character, self.text_location);
+        } else {
+            self.buffer.insert_char(character, self.text_location);
+        }
+        self.handle_move_command(Move::Right(1));
+        self.set_needs_redraw(true);
+    }
     fn insert_char(&mut self, character: char) {
         // If typing a closing character that is already there, just move past it
         if matches!(character, ')' | ']' | '}' | '"' | '\'' | '`') {
