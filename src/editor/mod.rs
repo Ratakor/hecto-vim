@@ -219,37 +219,37 @@ impl Editor {
 
     // region: Event Loop
     pub fn run(&mut self) {
+        self.refresh_status();
+        self.refresh_screen();
+
         loop {
             if self.should_quit {
                 break;
             }
-            self.refresh_status();
-            self.refresh_screen();
-            match poll(Duration::from_millis(100)) {
-                Ok(true) => match read() {
-                    Ok(event) => self.evaluate_event(event),
-                    Err(err) => {
-                        #[cfg(debug_assertions)]
-                        {
-                            panic!("Could not read event: {err:?}");
-                        }
-                        #[cfg(not(debug_assertions))]
-                        {
-                            let _ = err;
-                        }
-                    }
-                },
-                Ok(false) => {}
-                Err(err) => {
-                    #[cfg(debug_assertions)]
-                    {
-                        panic!("Could not poll event: {err:?}");
-                    }
-                    #[cfg(not(debug_assertions))]
-                    {
-                        let _ = err;
-                    }
+
+            let mut event_processed = false;
+            // Process all pending events
+            while poll(Duration::from_millis(0)).unwrap_or(false) {
+                if let Ok(event) = read() {
+                    self.evaluate_event(event);
+                    event_processed = true;
                 }
+                if self.should_quit {
+                    break;
+                }
+            }
+
+            // Wait for the next event if none were pending
+            if !event_processed && poll(Duration::from_millis(100)).unwrap_or(false) {
+                if let Ok(event) = read() {
+                    self.evaluate_event(event);
+                    event_processed = true;
+                }
+            }
+
+            if event_processed {
+                self.refresh_status();
+                self.refresh_screen();
             }
         }
     }
