@@ -441,6 +441,7 @@ impl View {
             Move::BufferStart => self.move_to_buffer_start(),
             Move::BufferEnd => self.move_to_buffer_end(),
             Move::GoToLine(line_idx) => self.move_to_line(line_idx),
+            Move::JumpBackward | Move::JumpForward => {}
         }
         if old_location.line_idx != self.text_location.line_idx
             || (self.selection_start.is_some()
@@ -449,6 +450,18 @@ impl View {
             self.set_needs_redraw(true);
         }
         self.scroll_text_location_into_view();
+    }
+
+    pub fn text_location(&self) -> Location {
+        self.text_location
+    }
+
+    pub fn set_text_location(&mut self, location: Location) {
+        self.text_location = location;
+        self.snap_to_valid_line();
+        self.snap_to_valid_grapheme();
+        self.scroll_text_location_into_view();
+        self.set_needs_redraw(true);
     }
 
     pub fn move_to_position(&mut self, position: Position) {

@@ -37,6 +37,12 @@ use self::command::{Command, Edit, Move, System};
 
 const QUIT_TIMES: u8 = 3;
 
+#[derive(Copy, Clone, Debug, PartialEq)]
+struct JumpEntry {
+    view_idx: usize,
+    location: Location,
+}
+
 #[derive(Eq, PartialEq, Default, Clone, Copy, Debug)]
 pub enum EditorMode {
     #[default]
@@ -75,6 +81,8 @@ pub struct Editor {
     should_quit: bool,
     views: Vec<View>,
     current_view_idx: usize,
+    jump_list: Vec<JumpEntry>,
+    jump_index: usize,
     status_bar: StatusBar,
     message_bar: MessageBar,
     command_bar: CommandBar,
@@ -110,6 +118,11 @@ impl Editor {
             should_quit: false,
             views: vec![View::default()],
             current_view_idx: 0,
+            jump_list: vec![JumpEntry {
+                view_idx: 0,
+                location: Location::default(),
+            }],
+            jump_index: 0,
             status_bar: StatusBar::default(),
             message_bar: MessageBar::default(),
             command_bar: CommandBar::default(),
@@ -525,6 +538,13 @@ impl Editor {
                 (KeyCode::Char('d'), KeyModifiers::CONTROL) => {
                     self.process_command(Command::Move(Move::HalfPageDown));
                 }
+                (KeyCode::Char('o'), KeyModifiers::CONTROL) => {
+                    self.process_command(Command::Move(Move::JumpBackward));
+                }
+                (KeyCode::Char('i') | KeyCode::Tab, KeyModifiers::CONTROL)
+                | (KeyCode::Tab, KeyModifiers::NONE) => {
+                    self.process_command(Command::Move(Move::JumpForward));
+                }
                 (KeyCode::Char('?'), KeyModifiers::NONE) => {
                     self.mode = EditorMode::Help;
                 }
@@ -807,6 +827,14 @@ impl Editor {
                 self.update_message("");
             }
             Command::Edit(edit_command) => {
+                if self.mode == EditorMode::Normal
+                    && matches!(
+                        edit_command,
+                        Edit::Undo | Edit::Redo | Edit::InsertNewline | Edit::Insert(_)
+                    )
+                {
+                    self.record_jump();
+                }
                 self.views[self.current_view_idx].clear_selection();
                 self.views[self.current_view_idx].handle_edit_command(edit_command);
             }
@@ -814,7 +842,22 @@ impl Editor {
                 if self.mode == EditorMode::Normal {
                     self.views[self.current_view_idx].clear_selection();
                 }
-                self.views[self.current_view_idx].handle_move_command(move_command);
+                if matches!(
+                    move_command,
+                    Move::ViewTop
+                        | Move::ViewBottom
+                        | Move::ViewCenter
+                        | Move::BufferStart
+                        | Move::BufferEnd
+                        | Move::GoToLine(_)
+                ) {
+                    self.record_jump();
+                }
+                match move_command {
+                    Move::JumpBackward => self.move_to_jump_backward(),
+                    Move::JumpForward => self.move_to_jump_forward(),
+                    _ => self.views[self.current_view_idx].handle_move_command(move_command),
+                }
             }
         }
     }
@@ -871,18 +914,21 @@ impl Editor {
                 }
             }
             "p" | "prev" => {
+                self.record_jump();
                 self.current_view_idx =
                     (self.current_view_idx + self.views.len() - 1) % self.views.len();
                 self.views[self.current_view_idx].set_needs_redraw(true);
                 self.reset_quit_times();
             }
             "n" | "next" => {
+                self.record_jump();
                 self.current_view_idx = (self.current_view_idx + 1) % self.views.len();
                 self.views[self.current_view_idx].set_needs_redraw(true);
                 self.reset_quit_times();
             }
             "o" | "open" => {
                 if let Some(path) = arg {
+                    self.record_jump();
                     let mut new_view = View::default();
                     new_view.resize(Size {
                         height: self.terminal_size.height.saturating_sub(2),
@@ -904,7 +950,48 @@ impl Editor {
         }
     }
 
-    // region resize command handling
+    // region jump list handling
+    fn record_jump(&mut self) {
+        let entry = JumpEntry {
+            view_idx: self.current_view_idx,
+            location: self.views[self.current_view_idx].text_location(),
+        };
+        if self.jump_list.get(self.jump_index) != Some(&entry) {
+            self.jump_list.truncate(self.jump_index.saturating_add(1));
+            self.jump_list.push(entry);
+            self.jump_index = self.jump_list.len().saturating_sub(1);
+        }
+    }
+
+    fn move_to_jump_backward(&mut self) {
+        let entry = JumpEntry {
+            view_idx: self.current_view_idx,
+            location: self.views[self.current_view_idx].text_location(),
+        };
+        if self.jump_list.get(self.jump_index) != Some(&entry) {
+            self.record_jump();
+        }
+        if self.jump_index > 0 {
+            self.jump_index = self.jump_index.saturating_sub(1);
+            let entry = self.jump_list[self.jump_index];
+            if entry.view_idx < self.views.len() {
+                self.current_view_idx = entry.view_idx;
+                self.views[self.current_view_idx].set_text_location(entry.location);
+            }
+        }
+    }
+
+    fn move_to_jump_forward(&mut self) {
+        if self.jump_index.saturating_add(1) < self.jump_list.len() {
+            self.jump_index = self.jump_index.saturating_add(1);
+            let entry = self.jump_list[self.jump_index];
+            if entry.view_idx < self.views.len() {
+                self.current_view_idx = entry.view_idx;
+                self.views[self.current_view_idx].set_text_location(entry.location);
+            }
+        }
+    }
+    // endregion
 
     fn handle_resize_command(&mut self, size: Size) {
         self.terminal_size = size;
@@ -937,6 +1024,12 @@ impl Editor {
 
         self.views
             .retain(|v| v.get_status(self.mode.to_string()).is_modified);
+
+        self.jump_list = vec![JumpEntry {
+            view_idx: 0,
+            location: Location::default(),
+        }];
+        self.jump_index = 0;
 
         if self.views.is_empty() {
             self.should_quit = true;
@@ -1002,9 +1095,11 @@ impl Editor {
                 self.views[self.current_view_idx].search(&query);
             }
             Command::Move(Move::Right(_) | Move::Down(_)) => {
+                self.record_jump();
                 self.views[self.current_view_idx].search_next();
             }
             Command::Move(Move::Up(_) | Move::Left(_)) => {
+                self.record_jump();
                 self.views[self.current_view_idx].search_prev();
             }
             Command::System(System::Resize(_)) | Command::Move(_) => {} // Not applicable during search, Resize already handled at this stage

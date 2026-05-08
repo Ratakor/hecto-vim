@@ -1,5 +1,5 @@
 use crossterm::event::{
-    KeyCode::{Down, End, Home, Left, PageDown, PageUp, Right, Up},
+    KeyCode::{Char, Down, End, Home, Left, PageDown, PageUp, Right, Tab, Up},
     KeyEvent, KeyModifiers,
 };
 
@@ -18,6 +18,8 @@ pub enum Move {
     AfterEndOfLine,
     BufferStart,
     BufferEnd,
+    JumpBackward,
+    JumpForward,
     GoToLine(usize),
     Up(usize),
     Left(usize),
@@ -41,6 +43,12 @@ impl TryFrom<KeyEvent> for Move {
                 PageUp => Ok(Self::PageUp),
                 Home => Ok(Self::StartOfLine),
                 End => Ok(Self::EndOfLine),
+                _ => Err(format!("Unsupported code: {code:?}")),
+            }
+        } else if modifiers == KeyModifiers::CONTROL {
+            match code {
+                Char('o') => Ok(Self::JumpBackward),
+                Char('i') => Ok(Self::JumpForward),
                 _ => Err(format!("Unsupported code: {code:?}")),
             }
         } else {
