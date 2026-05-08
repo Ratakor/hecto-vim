@@ -1041,6 +1041,9 @@ impl Editor {
     }
 
     fn set_prompt(&mut self, prompt_type: PromptType) {
+        if !prompt_type.is_none() {
+            self.update_message("");
+        }
         match prompt_type {
             PromptType::None => self.message_bar.set_needs_redraw(true), //Ensures the message bar is properly painted during the next redraw cycle
             PromptType::Save => self.command_bar.set_prompt("Save as: "),
