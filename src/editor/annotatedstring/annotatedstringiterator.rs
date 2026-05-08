@@ -1,3 +1,4 @@
+use crate::editor::AnnotationType;
 use crate::prelude::*;
 use std::cmp::min;
 
@@ -16,14 +17,21 @@ impl<'a> Iterator for AnnotatedStringIterator<'a> {
         }
 
         //Find the current active annotation
-        if let Some(annotation) = self
-            .annotated_string
-            .annotations
+        let annotations = &self.annotated_string.annotations;
+        let active_annotation = annotations
             .iter()
             .rfind(|annotation| {
-                annotation.start <= self.current_idx && annotation.end > self.current_idx
+                annotation.annotation_type == AnnotationType::Selection
+                    && annotation.start <= self.current_idx
+                    && annotation.end > self.current_idx
             })
-        {
+            .or_else(|| {
+                annotations.iter().rfind(|annotation| {
+                    annotation.start <= self.current_idx && annotation.end > self.current_idx
+                })
+            });
+
+        if let Some(annotation) = active_annotation {
             let end_idx = min(annotation.end, self.annotated_string.string.len());
             let start_idx = self.current_idx;
             self.current_idx = end_idx;
