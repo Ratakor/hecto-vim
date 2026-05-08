@@ -1,6 +1,6 @@
 use super::{Annotation, AnnotationType};
 use std::{
-    cmp::{max, min},
+    cmp::min,
     fmt::{self, Display},
 };
 mod annotatedstringpart;
@@ -52,7 +52,6 @@ impl AnnotatedString {
         self.string.replace_range(start..end, new_string);
 
         let replaced_range_len = end.saturating_sub(start); // This is the range we want to replace.
-        let shortened = new_string.len() < replaced_range_len;
         let len_difference = new_string.len().abs_diff(replaced_range_len); // This is how much longer or shorter the new range is.
 
         if len_difference == 0 {
@@ -61,40 +60,22 @@ impl AnnotatedString {
         }
 
         self.annotations.iter_mut().for_each(|annotation| {
-            annotation.start = if annotation.start >= end {
-                // For annotations starting after the replaced range, we move the start index by the difference in length.
-                if shortened {
-                    annotation.start.saturating_sub(len_difference)
-                } else {
-                    annotation.start.saturating_add(len_difference)
-                }
-            } else if annotation.start >= start {
-                // For annotations starting within the replaced range, we move the start index by the difference in length, constrained to the beginning or end of the replaced range.
-                if shortened {
-                    max(start, annotation.start.saturating_sub(len_difference))
-                } else {
-                    min(end, annotation.start.saturating_add(len_difference))
-                }
-            } else {
-                annotation.start
-            };
+            if annotation.start >= end {
+                annotation.start = annotation
+                    .start
+                    .saturating_add(new_string.len())
+                    .saturating_sub(replaced_range_len);
+            } else if annotation.start > start {
+                annotation.start = start;
+            }
 
-            annotation.end = if annotation.end >= end {
-                // For annotations ending after the replaced range, we move the end index by the difference in length.
-                if shortened {
-                    annotation.end.saturating_sub(len_difference)
-                } else {
-                    annotation.end.saturating_add(len_difference)
-                }
-            } else if annotation.end >= start {
-                // For annotations ending within the replaced range, we move the end index by the difference in length, constrained to the beginning or end of the replaced range.
-                if shortened {
-                    max(start, annotation.end.saturating_sub(len_difference))
-                } else {
-                    min(end, annotation.end.saturating_add(len_difference))
-                }
-            } else {
-                annotation.end
+            if annotation.end >= end {
+                annotation.end = annotation
+                    .end
+                    .saturating_add(new_string.len())
+                    .saturating_sub(replaced_range_len);
+            } else if annotation.end > start {
+                annotation.end = start;
             }
         });
 
@@ -186,5 +167,19 @@ mod tests {
         assert_eq!(parts[0].annotation_type, Some(AnnotationType::Keyword));
         assert_eq!(parts[1].string, " world");
         assert_eq!(parts[1].annotation_type, None);
+    }
+
+    #[test]
+    fn test_replace_multi_byte_character_boundary() {
+        let mut s = AnnotatedString::from(" ");
+        s.add_annotation(AnnotationType::Selection, 0, 1);
+        // Replace space (1 byte) with "·" (2 bytes)
+        s.replace(0, 1, "·");
+        
+        // This should not panic
+        let parts: Vec<AnnotatedStringPart> = s.into_iter().collect();
+        assert_eq!(parts.len(), 1);
+        assert_eq!(parts[0].string, "·");
+        assert_eq!(parts[0].annotation_type, Some(AnnotationType::Selection));
     }
 }
