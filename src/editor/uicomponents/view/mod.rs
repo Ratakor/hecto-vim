@@ -727,7 +727,7 @@ impl View {
                 self.text_location.grapheme_idx -= 1;
             } else if self.text_location.line_idx > 0 {
                 self.move_up(1);
-                self.move_to_end_of_line();
+                self.move_to_after_end_of_line();
             }
         }
         self.text_location.preferred_grapheme_idx = self.text_location.grapheme_idx;
