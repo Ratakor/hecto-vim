@@ -60,7 +60,6 @@ impl std::fmt::Display for EditorMode {
 #[derive(Eq, PartialEq, Default)]
 enum PromptType {
     Search,
-    Save,
     Command,
     #[default]
     None,
@@ -793,7 +792,6 @@ impl Editor {
         }
         match self.prompt_type {
             PromptType::Search => self.process_command_during_search(command),
-            PromptType::Save => self.process_command_during_save(command),
             PromptType::Command => self.process_command_during_command(command),
             PromptType::None => self.process_command_no_prompt(command),
         }
@@ -969,22 +967,7 @@ impl Editor {
         if self.views[self.current_view_idx].is_file_loaded() {
             self.save(None);
         } else {
-            self.set_prompt(PromptType::Save);
-        }
-    }
-    fn process_command_during_save(&mut self, command: Command) {
-        match command {
-            Command::System(System::Resize(_)) | Command::Move(_) => {} // Not applicable during save, Resize already handled at this stage
-            Command::System(System::Dismiss) => {
-                self.set_prompt(PromptType::None);
-                self.update_message("Save aborted.");
-            }
-            Command::Edit(Edit::InsertNewline) => {
-                let file_name = self.command_bar.value();
-                self.save(Some(&file_name));
-                self.set_prompt(PromptType::None);
-            }
-            Command::Edit(edit_command) => self.command_bar.handle_edit_command(edit_command),
+            self.update_message(&format!("ERR: Can't save without filename!"));
         }
     }
     fn save(&mut self, file_name: Option<&str>) {
@@ -1046,7 +1029,6 @@ impl Editor {
         }
         match prompt_type {
             PromptType::None => self.message_bar.set_needs_redraw(true), //Ensures the message bar is properly painted during the next redraw cycle
-            PromptType::Save => self.command_bar.set_prompt("Save as: "),
             PromptType::Command => self.command_bar.set_prompt(":"),
             PromptType::Search => {
                 self.views[self.current_view_idx].enter_search();
