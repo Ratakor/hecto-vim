@@ -388,7 +388,7 @@ impl Editor {
                     }
                 }
             }
-            if let Ok(command) = Command::try_from(event) {
+            if let Ok(command) = Command::try_from(key_event) {
                 self.process_command(command);
             }
         }
@@ -536,8 +536,7 @@ impl Editor {
                 (KeyCode::Char('o'), KeyModifiers::CONTROL) => {
                     self.process_command(Command::Move(Move::JumpBackward));
                 }
-                (KeyCode::Char('i') | KeyCode::Tab, KeyModifiers::CONTROL)
-                | (KeyCode::Tab, KeyModifiers::NONE) => {
+                (KeyCode::Char('i'), KeyModifiers::CONTROL) => {
                     self.process_command(Command::Move(Move::JumpForward));
                 }
                 (KeyCode::Esc, KeyModifiers::NONE) => {
@@ -867,6 +866,7 @@ impl Editor {
                     self.set_prompt(PromptType::None);
                 }
             }
+            Command::Edit(Edit::Complete) => self.handle_complete_command(),
             Command::Edit(edit_command) => self.command_bar.handle_edit_command(edit_command),
             Command::Move(Move::Up(_)) => self.command_bar.navigate_history_up(),
             Command::Move(Move::Down(_)) => self.command_bar.navigate_history_down(),
@@ -1141,7 +1141,130 @@ impl Editor {
         self.command_bar.clear_value();
         self.prompt_type = prompt_type;
     }
-    // end region
+    fn handle_complete_command(&mut self) {
+        let (mut matches, mut index, mut original) = self.command_bar.get_completion_state();
+        let current_value = self.command_bar.value();
+
+        if original.is_none() {
+            // First tab press: find matches
+            let parts: Vec<&str> = current_value.split_whitespace().collect();
+            if parts.is_empty() {
+                return;
+            }
+
+            if parts.len() == 1 && !current_value.ends_with(' ') {
+                let cmd_to_complete = parts[0];
+                let commands = [
+                    "q", "quit", "q!", "quit!", "w", "write", "syntax", "wq", "x", "p", "prev",
+                    "n", "next", "o", "open", "h", "help",
+                ];
+                matches = commands
+                    .iter()
+                    .filter(|cmd| cmd.starts_with(cmd_to_complete))
+                    .map(|&s| s.to_string())
+                    .collect();
+                original = Some(cmd_to_complete.to_string());
+            } else if parts.len() <= 2 {
+                let cmd = parts[0];
+                if matches!(cmd, "w" | "write" | "o" | "open" | "wq" | "x") {
+                    let path_to_complete = if parts.len() == 2 { parts[1] } else { "" };
+                    if let Ok(entries) = std::fs::read_dir(".") {
+                        for entry in entries.flatten() {
+                            if let Ok(name) = entry.file_name().into_string() {
+                                if name.starts_with(path_to_complete) {
+                                    matches.push(name);
+                                }
+                            }
+                        }
+                    }
+                    original = Some(current_value.clone());
+                }
+            }
+        }
+
+        if matches.is_empty() {
+            return;
+        }
+
+        match index {
+            None => {
+                // First Tab: Complete to Longest Common Prefix or unique match
+                if matches.len() == 1 {
+                    let new_val = if current_value.split_whitespace().count() <= 1
+                        && !current_value.ends_with(' ')
+                    {
+                        matches[0].clone()
+                    } else {
+                        let cmd = current_value.split_whitespace().next().unwrap_or("");
+                        format!("{cmd} {}", matches[0])
+                    };
+                    self.command_bar.set_value(&new_val);
+                    index = Some(0);
+                } else {
+                    let lcp = longest_common_prefix(
+                        &matches.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
+                    );
+                    let prefix_len = if current_value.split_whitespace().count() <= 1
+                        && !current_value.ends_with(' ')
+                    {
+                        original.as_ref().map_or(0, String::len)
+                    } else {
+                        current_value.split_whitespace().nth(1).map_or(0, str::len)
+                    };
+
+                    if lcp.len() > prefix_len {
+                        let new_val = if current_value.split_whitespace().count() <= 1
+                            && !current_value.ends_with(' ')
+                        {
+                            lcp
+                        } else {
+                            let cmd = current_value.split_whitespace().next().unwrap_or("");
+                            format!("{cmd} {lcp}")
+                        };
+                        self.command_bar.set_value(&new_val);
+                    }
+                    index = Some(usize::MAX); // Special value to indicate LCP was done
+                }
+            }
+            Some(i) => {
+                // Subsequent Tabs: Cycle through matches
+                let new_index = if i == usize::MAX {
+                    0
+                } else {
+                    (i + 1) % matches.len()
+                };
+                let new_val = if original.as_ref().map_or(false, |o| !o.contains(' ')) {
+                    matches[new_index].clone()
+                } else {
+                    let cmd = original
+                        .as_ref()
+                        .and_then(|o| o.split_whitespace().next())
+                        .unwrap_or("");
+                    format!("{cmd} {}", matches[new_index])
+                };
+                self.command_bar.set_value(&new_val);
+                index = Some(new_index);
+            }
+        }
+
+        self.command_bar
+            .set_completion_state(matches, index, original);
+    }
+}
+
+fn longest_common_prefix(strings: &[&str]) -> String {
+    if strings.is_empty() {
+        return String::new();
+    }
+    let first = strings[0];
+    for (i, char) in first.chars().enumerate() {
+        for string in &strings[1..] {
+            if i >= string.len() || string.chars().nth(i) != Some(char) {
+                return first[..i].to_string();
+            }
+        }
+    }
+    first.to_string()
 }
 
 impl Drop for Editor {

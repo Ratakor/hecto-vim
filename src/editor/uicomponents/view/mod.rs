@@ -398,6 +398,7 @@ impl View {
     pub fn handle_edit_command(&mut self, command: Edit) {
         match command {
             Edit::Insert(character) => self.insert_char(character),
+            Edit::Complete => self.insert_char('\t'),
             Edit::Replace(character) => self.replace_char(character),
             Edit::Delete => self.delete(),
             Edit::DeleteBackward => self.delete_backward(),

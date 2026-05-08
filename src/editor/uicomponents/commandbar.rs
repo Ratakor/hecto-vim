@@ -15,10 +15,16 @@ pub struct CommandBar {
     history: Vec<String>,
     history_index: Option<usize>,
     current_input: Option<Line>,
+    completion_matches: Vec<String>,
+    completion_index: Option<usize>,
+    original_input: Option<String>,
 }
 
 impl CommandBar {
     pub fn handle_edit_command(&mut self, command: Edit) {
+        if !matches!(command, Edit::Complete) {
+            self.clear_completion();
+        }
         match command {
             Edit::Insert(character) => {
                 self.value.insert_char(character, self.caret_pos);
@@ -40,7 +46,7 @@ impl CommandBar {
                     self.value.delete(self.caret_pos);
                 }
             }
-            Edit::InsertNewline | Edit::Undo | Edit::Redo => {}
+            Edit::InsertNewline | Edit::Undo | Edit::Redo | Edit::Complete => {}
         }
         self.history_index = None;
         self.current_input = None;
@@ -65,6 +71,34 @@ impl CommandBar {
         self.caret_pos = 0;
         self.history_index = None;
         self.current_input = None;
+        self.clear_completion();
+        self.set_needs_redraw(true);
+    }
+    fn clear_completion(&mut self) {
+        self.completion_matches.clear();
+        self.completion_index = None;
+        self.original_input = None;
+    }
+    pub fn get_completion_state(&self) -> (Vec<String>, Option<usize>, Option<String>) {
+        (
+            self.completion_matches.clone(),
+            self.completion_index,
+            self.original_input.clone(),
+        )
+    }
+    pub fn set_completion_state(
+        &mut self,
+        matches: Vec<String>,
+        index: Option<usize>,
+        original: Option<String>,
+    ) {
+        self.completion_matches = matches;
+        self.completion_index = index;
+        self.original_input = original;
+    }
+    pub fn set_value(&mut self, value: &str) {
+        self.value = Line::from(value);
+        self.caret_pos = self.value.grapheme_count();
         self.set_needs_redraw(true);
     }
     pub fn add_to_history(&mut self, command: String) {

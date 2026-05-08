@@ -11,6 +11,7 @@ pub enum Edit {
     DeleteBackward,
     Undo,
     Redo,
+    Complete,
 }
 impl TryFrom<KeyEvent> for Edit {
     type Error = String;
@@ -20,7 +21,8 @@ impl TryFrom<KeyEvent> for Edit {
             (Char(character), KeyModifiers::NONE | KeyModifiers::SHIFT) => {
                 Ok(Self::Insert(character))
             }
-            (Tab, KeyModifiers::NONE) => Ok(Self::Insert('\t')),
+            (Tab, KeyModifiers::NONE) => Ok(Self::Complete),
+            (Tab, KeyModifiers::SHIFT) => Ok(Self::Insert('\t')),
             (Enter, KeyModifiers::NONE) => Ok(Self::InsertNewline),
             (Backspace, KeyModifiers::NONE) => Ok(Self::DeleteBackward),
             (Delete, KeyModifiers::NONE) => Ok(Self::Delete),
