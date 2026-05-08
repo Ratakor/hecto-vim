@@ -121,6 +121,16 @@ impl Buffer {
         4
     }
 
+    pub fn new_with_content(content: &str, name: &str) -> Self {
+        Self {
+            lines: content.lines().map(Line::from).collect(),
+            file_info: FileInfo::new_internal(name),
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
+            saved_state_index: Some(0),
+        }
+    }
+
     pub fn load(file_name: &str) -> Result<Self, Error> {
         Ok(Self {
             lines: read_to_string(file_name)

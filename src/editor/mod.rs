@@ -36,6 +36,53 @@ use uicomponents::{
 use self::command::{Command, Edit, Move, System};
 
 const QUIT_TIMES: u8 = 3;
+const HELP_TEXT: &str = "\
+HELP - ALL COMMANDS
+
+[Movement]
+  h, j, k, l : Left, Down, Up, Right
+  C-u, C-d   : Half page Up/Down
+  C-o, C-i   : Jump backward/forward in history
+  gg / XXXg  : Buffer Start / Go to line XXX
+  ge         : Buffer End
+  gh / gl    : Line Start / End
+  gs         : First non-whitespace
+  gt/gb/gc   : View Top/Bottom/Center
+
+[Editing]
+  i          : Insert mode
+  a          : Append (Right + Insert)
+  o, O       : Open line below/above + Insert
+  rX         : Replace character under cursor with X
+  u, U       : Undo, Redo
+  p          : Paste from internal clipboard
+  P          : Paste before from internal clipboard
+  SPC p/P    : Paste from system clipboard
+  d          : Delete selection or current character
+  SPC d      : Delete selection to system clipboard
+  J          : Join current line with the next one
+
+[Selection & Visual]
+  v          : Toggle Visual mode
+  x          : Select whole line down
+  X          : Select whole line up
+  y          : Copy (yank) selection
+  SPC y      : Copy (yank) selection to system clipboard
+  %          : Select all
+
+[Search & Commands]
+  /          : Search
+  :          : Command mode
+  :w [path]  : Save
+  :q, :q!    : Quit, Force quit
+  :wq, :x    : Save and quit
+  :syntax    : Toggle syntax highlighting
+  :next, :n  : Next buffer
+  :prev, :p  : Previous buffer
+  :o [path]  : Open file
+  :help      : Show this help
+";
+
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 struct JumpEntry {
@@ -49,7 +96,6 @@ pub enum EditorMode {
     Normal,
     Insert,
     Visual,
-    Help,
 }
 
 impl std::fmt::Display for EditorMode {
@@ -58,7 +104,6 @@ impl std::fmt::Display for EditorMode {
             Self::Normal => write!(f, "NORMAL"),
             Self::Insert => write!(f, "INSERT"),
             Self::Visual => write!(f, "VISUAL"),
-            Self::Help => write!(f, "HELP"),
         }
     }
 }
@@ -212,10 +257,6 @@ impl Editor {
         {
             return;
         }
-        if self.mode == EditorMode::Help {
-            let _ = self.draw_help();
-            return;
-        }
         let bottom_bar_row = self.terminal_size.height.saturating_sub(1);
         let _ = Terminal::hide_caret();
         if self.in_prompt() {
@@ -286,61 +327,6 @@ impl Editor {
         }
     }
 
-    fn draw_help(&mut self) -> Result<(), Error> {
-        let _ = Terminal::clear_screen();
-        let _ = Terminal::move_caret_to(Position::default());
-        let help_text = vec![
-            "HELP - ALL COMMANDS (Press any key to exit)",
-            "This may be out of date",
-            "",
-            "[Movement]",
-            "  h, j, k, l : Left, Down, Up, Right",
-            "  C-u, C-d   : Half page Up/Down",
-            "  gg / XXXg  : Buffer Start / Go to line XXX",
-            "  g          : Enter Goto mode",
-            "  g/e        : Buffer Start/End",
-            "  h/l        : Line Start/End",
-            "  s          : First non-whitespace",
-            "  t/b/c      : View Top/Bottom/Center",
-            "",
-            "[Editing]",
-            "  i          : Insert mode",
-            "  a          : Append (Right + Insert)",
-            "  o, O       : Open line below/above + Insert",
-            "  r          : Replace character",
-            "  u, U       : Undo, Redo",
-            "  p          : Paste clipboard",
-            "  SPC p/P    : Paste from system clipboard",
-            "  d          : Delete selection & copy to clipboard",
-            "  SPC d      : Delete selection & copy to system clipboard",
-            "",
-            "[Selection & Visual]",
-            "  v          : Toggle Visual mode",
-            "  x          : Select whole line",
-            "  y          : Copy (yank) selection",
-            "  SPC y      : Copy (yank) selection to system clipboard",
-            "",
-            "[Search & Commands]",
-            "  /          : Search",
-            "  :          : Command mode",
-            "  :w [path]  : Save",
-            "  :q, :q!    : Quit, Force quit",
-            "  :wq, :x    : Save and quit",
-            "  :syntax    : Toggle syntax highlighting",
-            "  :next      : Next buffer",
-            "  :prev      : Previous buffer",
-            "  :o [path]  : Open file",
-            "  ?          : Show this help",
-        ];
-
-        for (i, line) in help_text.iter().enumerate() {
-            if i < self.terminal_size.height {
-                Terminal::print_row_at(i, 0, line)?;
-            }
-        }
-        Terminal::execute()
-    }
-
     fn evaluate_event(&mut self, event: Event) {
         let should_process = match &event {
             Event::Key(KeyEvent { kind, .. }) => kind == &KeyEventKind::Press,
@@ -387,13 +373,6 @@ impl Editor {
                             self.update_message("");
                             return;
                         }
-                    }
-                    EditorMode::Help => {
-                        self.mode = EditorMode::Normal;
-                        self.views[self.current_view_idx].set_needs_redraw(true);
-                        self.status_bar.set_needs_redraw(true);
-                        self.message_bar.set_needs_redraw(true);
-                        return;
                     }
                 }
             }
@@ -544,9 +523,6 @@ impl Editor {
                 (KeyCode::Char('i') | KeyCode::Tab, KeyModifiers::CONTROL)
                 | (KeyCode::Tab, KeyModifiers::NONE) => {
                     self.process_command(Command::Move(Move::JumpForward));
-                }
-                (KeyCode::Char('?'), KeyModifiers::NONE) => {
-                    self.mode = EditorMode::Help;
                 }
                 (KeyCode::Esc, KeyModifiers::NONE) => {
                     self.views[self.current_view_idx].clear_selection();
@@ -945,6 +921,21 @@ impl Editor {
                 } else {
                     self.update_message("ERR: No file name provided");
                 }
+            }
+            "h" | "help" => {
+                self.record_jump();
+                let new_view = View::new_with_content(
+                    HELP_TEXT,
+                    "HELP",
+                    Size {
+                        height: self.terminal_size.height.saturating_sub(2),
+                        width: self.terminal_size.width,
+                    },
+                );
+                self.views.push(new_view);
+                self.current_view_idx = self.views.len() - 1;
+                self.update_message("Opened help");
+                self.reset_quit_times();
             }
             _ => self.update_message(&format!("ERR: Unknown command: {cmd}")),
         }

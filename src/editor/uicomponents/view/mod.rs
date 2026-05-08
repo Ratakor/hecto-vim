@@ -48,6 +48,12 @@ impl Default for View {
 }
 
 impl View {
+    pub fn new_with_content(content: &str, name: &str, size: Size) -> Self {
+        let mut view = Self::default();
+        view.resize(size);
+        view.buffer = Buffer::new_with_content(content, name);
+        view
+    }
     pub fn can_undo(&self) -> bool {
         self.buffer.can_undo()
     }

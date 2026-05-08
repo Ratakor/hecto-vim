@@ -7,10 +7,18 @@ use std::{
 #[derive(Default, Debug)]
 pub struct FileInfo {
     path: Option<PathBuf>,
+    display_name: Option<String>,
     file_type: FileType,
 }
 
 impl FileInfo {
+    pub fn new_internal(name: &str) -> Self {
+        Self {
+            path: None,
+            display_name: Some(name.to_string()),
+            file_type: FileType::Text,
+        }
+    }
     pub fn from(file_name: &str) -> Self {
         let path = PathBuf::from(file_name);
         let file_type = if let Some(ext) = path.extension() {
@@ -28,6 +36,7 @@ impl FileInfo {
         };
         Self {
             path: Some(path),
+            display_name: None,
             file_type,
         }
     }
@@ -44,6 +53,9 @@ impl FileInfo {
 
 impl Display for FileInfo {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(name) = &self.display_name {
+            return write!(formatter, "{name}");
+        }
         let name = self
             .get_path()
             .and_then(|path| path.file_name())
