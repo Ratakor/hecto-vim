@@ -74,7 +74,8 @@ impl PromptType {
 
 pub struct Editor {
     should_quit: bool,
-    view: View,
+    views: Vec<View>,
+    current_view_idx: usize,
     status_bar: StatusBar,
     message_bar: MessageBar,
     command_bar: CommandBar,
@@ -108,7 +109,8 @@ impl Editor {
         let size = Terminal::size().unwrap_or_default();
         let mut editor = Self {
             should_quit: false,
-            view: View::default(),
+            views: vec![View::default()],
+            current_view_idx: 0,
             status_bar: StatusBar::default(),
             message_bar: MessageBar::default(),
             command_bar: CommandBar::default(),
@@ -128,10 +130,26 @@ impl Editor {
         editor.handle_resize_command(size);
 
         let args: Vec<String> = env::args().collect();
-        if let Some(file_name) = args.get(1) {
+        let mut first = true;
+        for file_name in args.iter().skip(1) {
             debug_assert!(!file_name.is_empty());
-            if editor.view.load(file_name).is_err() {
-                editor.update_message(&format!("ERR: Could not open file: {file_name}"));
+            if first {
+                if editor.views[0].load(file_name).is_err() {
+                    editor.update_message(&format!("ERR: Could not open file: {file_name}"));
+                } else {
+                    first = false;
+                }
+            } else {
+                let mut new_view = View::default();
+                new_view.resize(Size {
+                    height: size.height.saturating_sub(2),
+                    width: size.width,
+                });
+                if new_view.load(file_name).is_err() {
+                    editor.update_message(&format!("ERR: Could not open file: {file_name}"));
+                } else {
+                    editor.views.push(new_view);
+                }
             }
         }
         editor.refresh_status();
@@ -143,10 +161,11 @@ impl Editor {
     // region: Event Loop
     pub fn run(&mut self) {
         loop {
-            self.refresh_screen();
             if self.should_quit {
                 break;
             }
+            self.refresh_status();
+            self.refresh_screen();
             match poll(Duration::from_millis(100)) {
                 Ok(true) => match read() {
                     Ok(event) => self.evaluate_event(event),
@@ -173,12 +192,12 @@ impl Editor {
                     }
                 }
             }
-            self.refresh_status();
         }
     }
 
     fn refresh_screen(&mut self) {
-        if self.terminal_size.height == 0 || self.terminal_size.width == 0 {
+        if self.terminal_size.height == 0 || self.terminal_size.width == 0 || self.views.is_empty()
+        {
             return;
         }
         if self.mode == EditorMode::Help {
@@ -198,9 +217,9 @@ impl Editor {
         }
         if self.terminal_size.height > 2 {
             if self.context_menu.is_some() {
-                self.view.set_needs_redraw(true);
+                self.views[self.current_view_idx].set_needs_redraw(true);
             }
-            self.view.render(0);
+            self.views[self.current_view_idx].render(0);
         }
         if let Some(menu) = &mut self.context_menu {
             menu.set_needs_redraw(true);
@@ -212,7 +231,7 @@ impl Editor {
                 col: self.command_bar.caret_position_col(),
             }
         } else {
-            self.view.caret_position()
+            self.views[self.current_view_idx].caret_position()
         };
         debug_assert!(new_caret_pos.col <= self.terminal_size.width);
         debug_assert!(new_caret_pos.row <= self.terminal_size.height);
@@ -223,6 +242,9 @@ impl Editor {
     }
 
     fn refresh_status(&mut self) {
+        if self.views.is_empty() {
+            return;
+        }
         let mut command_buffer = self
             .count
             .map(|c| c.to_string())
@@ -236,7 +258,7 @@ impl Editor {
         );
         self.message_bar.update_command_buffer(&command_buffer);
 
-        let status = self.view.get_status(self.mode.to_string());
+        let status = self.views[self.current_view_idx].get_status(self.mode.to_string());
         let title = format!("{} - {NAME}", status.file_name);
         self.status_bar.update_status(status);
         if title != self.title && matches!(Terminal::set_title(&title), Ok(())) {
@@ -293,6 +315,9 @@ impl Editor {
             "  :q, :q!    : Quit, Force quit",
             "  :wq, :x    : Save and quit",
             "  :syntax    : Toggle syntax highlighting",
+            "  :next      : Next buffer",
+            "  :prev      : Previous buffer",
+            "  :o [path]  : Open file",
             "  ?          : Show this help",
         ];
 
@@ -353,7 +378,7 @@ impl Editor {
                     }
                     EditorMode::Help => {
                         self.mode = EditorMode::Normal;
-                        self.view.set_needs_redraw(true);
+                        self.views[self.current_view_idx].set_needs_redraw(true);
                         self.status_bar.set_needs_redraw(true);
                         self.message_bar.set_needs_redraw(true);
                         return;
@@ -441,53 +466,53 @@ impl Editor {
                     self.process_command(Command::Move(Move::Right(self.count.unwrap_or(1))));
                 }
                 (KeyCode::Char('y'), KeyModifiers::NONE) => {
-                    if let Some(text) = self.view.get_selected_text() {
+                    if let Some(text) = self.views[self.current_view_idx].get_selected_text() {
                         self.clipboard = text;
                         self.update_message("Text copied to clipboard.");
                     } else {
-                        self.clipboard = self.view.get_current_character();
+                        self.clipboard = self.views[self.current_view_idx].get_current_character();
                         self.update_message("Character copied to clipboard.");
                     }
                 }
                 (KeyCode::Char('v'), KeyModifiers::NONE) => {
                     if self.mode == EditorMode::Visual {
                         self.mode = EditorMode::Normal;
-                        self.view.clear_selection();
+                        self.views[self.current_view_idx].clear_selection();
                     } else {
                         self.mode = EditorMode::Visual;
-                        if self.view.get_selection().is_none() {
-                            self.view.start_selection();
+                        if self.views[self.current_view_idx].get_selection().is_none() {
+                            self.views[self.current_view_idx].start_selection();
                         }
                     }
                 }
                 (KeyCode::Char('x'), KeyModifiers::NONE) => {
-                    self.view.select_line_down();
+                    self.views[self.current_view_idx].select_line_down();
                 }
                 (KeyCode::Char('X'), KeyModifiers::SHIFT | KeyModifiers::NONE) => {
-                    self.view.select_line_up();
+                    self.views[self.current_view_idx].select_line_up();
                 }
                 (KeyCode::Char('d'), KeyModifiers::NONE) => {
-                    if let Some(text) = self.view.get_selected_text() {
+                    if let Some(text) = self.views[self.current_view_idx].get_selected_text() {
                         self.clipboard = text;
-                        self.view.delete_selection();
+                        self.views[self.current_view_idx].delete_selection();
                         self.mode = EditorMode::Normal;
                     } else {
                         self.process_command(Command::Edit(Edit::Delete));
                     }
                 }
                 (KeyCode::Char('p'), KeyModifiers::NONE) => {
-                    self.view.paste(&self.clipboard);
+                    self.views[self.current_view_idx].paste(&self.clipboard);
                     self.mode = EditorMode::Normal;
                 }
                 (KeyCode::Char('P'), KeyModifiers::SHIFT | KeyModifiers::NONE) => {
-                    self.view.paste_backward(&self.clipboard);
+                    self.views[self.current_view_idx].paste_backward(&self.clipboard);
                     self.mode = EditorMode::Normal;
                 }
                 (KeyCode::Char('%'), KeyModifiers::SHIFT | KeyModifiers::NONE) => {
-                    self.view.select_all();
+                    self.views[self.current_view_idx].select_all();
                 }
                 (KeyCode::Char('J'), KeyModifiers::SHIFT | KeyModifiers::NONE) => {
-                    self.view.concat_lines();
+                    self.views[self.current_view_idx].concat_lines();
                 }
                 (KeyCode::Char('u'), KeyModifiers::NONE) => {
                     self.process_command(Command::Edit(Edit::Undo));
@@ -505,7 +530,7 @@ impl Editor {
                     self.mode = EditorMode::Help;
                 }
                 (KeyCode::Esc, KeyModifiers::NONE) => {
-                    self.view.clear_selection();
+                    self.views[self.current_view_idx].clear_selection();
                     if self.mode == EditorMode::Visual {
                         self.mode = EditorMode::Normal;
                     }
@@ -581,17 +606,17 @@ impl Editor {
                 },
                 (KeyCode::Char(' '), KeyModifiers::NONE) => match (second_code, second_mod) {
                     (KeyCode::Char('y'), KeyModifiers::NONE) => {
-                        let text = if self.view.get_selection().is_some() {
-                            self.view.get_selected_text()
+                        let text = if self.views[self.current_view_idx].get_selection().is_some() {
+                            self.views[self.current_view_idx].get_selected_text()
                         } else {
-                            Some(self.view.get_current_character())
+                            Some(self.views[self.current_view_idx].get_current_character())
                         };
 
                         if let Some(text) = text {
                             if let Err(e) = self.system_clipboard.set_text(text) {
                                 self.update_message(&format!("ERR: Clipboard error: {e}"));
                             } else {
-                                if self.view.get_selection().is_some() {
+                                if self.views[self.current_view_idx].get_selection().is_some() {
                                     self.update_message("Text copied to system clipboard.");
                                 } else {
                                     self.update_message("Character copied to system clipboard.");
@@ -601,22 +626,22 @@ impl Editor {
                     }
                     (KeyCode::Char('p'), KeyModifiers::NONE) => {
                         if let Ok(text) = self.system_clipboard.get_text() {
-                            self.view.paste(&text);
+                            self.views[self.current_view_idx].paste(&text);
                         }
                         self.mode = EditorMode::Normal;
                     }
                     (KeyCode::Char('P'), KeyModifiers::SHIFT | KeyModifiers::NONE) => {
                         if let Ok(text) = self.system_clipboard.get_text() {
-                            self.view.paste_backward(&text);
+                            self.views[self.current_view_idx].paste_backward(&text);
                         }
                         self.mode = EditorMode::Normal;
                     }
                     (KeyCode::Char('d'), KeyModifiers::NONE) => {
-                        if let Some(text) = self.view.get_selected_text() {
+                        if let Some(text) = self.views[self.current_view_idx].get_selected_text() {
                             if let Err(e) = self.system_clipboard.set_text(text) {
                                 self.update_message(&format!("ERR: Clipboard error: {e}"));
                             } else {
-                                self.view.delete_selection();
+                                self.views[self.current_view_idx].delete_selection();
                                 self.mode = EditorMode::Normal;
                             }
                         } else {
@@ -657,31 +682,36 @@ impl Editor {
                     if let Some(action) = menu.handle_click(mouse_pos) {
                         match action {
                             ContextMenuAction::Copy => {
-                                if let Some(text) = self.view.get_selected_text() {
+                                if let Some(text) =
+                                    self.views[self.current_view_idx].get_selected_text()
+                                {
                                     self.clipboard = text.clone();
                                     let _ = self.system_clipboard.set_text(text);
                                     self.update_message("Text copied to clipboard.");
                                 } else {
-                                    let text = self.view.get_current_character();
+                                    let text =
+                                        self.views[self.current_view_idx].get_current_character();
                                     self.clipboard = text.clone();
                                     let _ = self.system_clipboard.set_text(text);
                                     self.update_message("Character copied to clipboard.");
                                 }
                             }
                             ContextMenuAction::Delete => {
-                                if let Some(text) = self.view.get_selected_text() {
+                                if let Some(text) =
+                                    self.views[self.current_view_idx].get_selected_text()
+                                {
                                     self.clipboard = text;
-                                    self.view.delete_selection();
+                                    self.views[self.current_view_idx].delete_selection();
                                     self.mode = EditorMode::Normal;
                                     self.update_message("Selection deleted.");
                                 }
                             }
                             ContextMenuAction::Paste => {
-                                self.view.move_to_position(menu.position());
+                                self.views[self.current_view_idx].move_to_position(menu.position());
                                 if let Ok(text) = self.system_clipboard.get_text() {
-                                    self.view.paste(&text);
+                                    self.views[self.current_view_idx].paste(&text);
                                 } else {
-                                    self.view.paste(&self.clipboard);
+                                    self.views[self.current_view_idx].paste(&self.clipboard);
                                 }
                             }
                             ContextMenuAction::Undo => {
@@ -693,12 +723,12 @@ impl Editor {
                             ContextMenuAction::SelectAll => {
                                 // I know this is different from %, it's on purpose
                                 self.mode = EditorMode::Visual;
-                                self.view.select_all();
+                                self.views[self.current_view_idx].select_all();
                             }
                         }
                     }
                     self.context_menu = None;
-                    self.view.set_needs_redraw(true);
+                    self.views[self.current_view_idx].set_needs_redraw(true);
                     return;
                 }
                 MouseEventKind::Moved => {
@@ -712,8 +742,8 @@ impl Editor {
         match kind {
             MouseEventKind::Down(MouseButton::Left) => {
                 if mouse_pos.row < self.terminal_size.height.saturating_sub(2) {
-                    self.view.move_to_position(mouse_pos);
-                    self.view.clear_selection();
+                    self.views[self.current_view_idx].move_to_position(mouse_pos);
+                    self.views[self.current_view_idx].clear_selection();
                     self.mode = EditorMode::Normal;
                     let _ = Terminal::set_cursor_style(SetCursorStyle::SteadyBlock);
                 }
@@ -723,31 +753,31 @@ impl Editor {
                     self.context_menu = Some(ContextMenu::new(
                         mouse_pos,
                         self.terminal_size,
-                        self.view.can_undo(),
-                        self.view.can_redo(),
-                        self.view.has_selection(),
-                        self.view
+                        self.views[self.current_view_idx].can_undo(),
+                        self.views[self.current_view_idx].can_redo(),
+                        self.views[self.current_view_idx].has_selection(),
+                        self.views[self.current_view_idx]
                             .can_paste(&self.clipboard, &mut self.system_clipboard),
                     ));
                 } else {
                     self.context_menu = None;
-                    self.view.set_needs_redraw(true);
+                    self.views[self.current_view_idx].set_needs_redraw(true);
                 }
             }
             MouseEventKind::Drag(MouseButton::Left) => {
                 if mouse_pos.row < self.terminal_size.height.saturating_sub(2) {
                     if self.mode != EditorMode::Visual {
                         self.mode = EditorMode::Visual;
-                        self.view.start_selection();
+                        self.views[self.current_view_idx].start_selection();
                     }
-                    self.view.move_to_position(mouse_pos);
+                    self.views[self.current_view_idx].move_to_position(mouse_pos);
                 }
             }
             MouseEventKind::ScrollUp => {
-                self.view.handle_move_command(Move::Up(1));
+                self.views[self.current_view_idx].handle_move_command(Move::Up(1));
             }
             MouseEventKind::ScrollDown => {
-                self.view.handle_move_command(Move::Down(1));
+                self.views[self.current_view_idx].handle_move_command(Move::Down(1));
             }
             _ => {}
         }
@@ -775,18 +805,18 @@ impl Editor {
         match command {
             Command::System(System::Resize(_)) => {}
             Command::System(System::Dismiss) => {
-                self.view.clear_selection();
+                self.views[self.current_view_idx].clear_selection();
                 self.update_message("");
             }
             Command::Edit(edit_command) => {
-                self.view.clear_selection();
-                self.view.handle_edit_command(edit_command);
+                self.views[self.current_view_idx].clear_selection();
+                self.views[self.current_view_idx].handle_edit_command(edit_command);
             }
             Command::Move(move_command) => {
                 if self.mode == EditorMode::Normal {
-                    self.view.clear_selection();
+                    self.views[self.current_view_idx].clear_selection();
                 }
-                self.view.handle_move_command(move_command);
+                self.views[self.current_view_idx].handle_move_command(move_command);
             }
         }
     }
@@ -828,15 +858,48 @@ impl Editor {
                     self.handle_save_command();
                 }
             }
-            "syntax" => self.view.toggle_syntax(),
+            "syntax" => self.views[self.current_view_idx].toggle_syntax(),
             "wq" | "x" => {
                 if let Some(path) = arg {
                     self.save(Some(path));
                 } else {
                     self.save(None);
                 }
-                if !self.view.get_status(self.mode.to_string()).is_modified {
+                if !self.views[self.current_view_idx]
+                    .get_status(self.mode.to_string())
+                    .is_modified
+                {
                     self.should_quit = true;
+                }
+            }
+            "p" | "prev" => {
+                self.current_view_idx =
+                    (self.current_view_idx + self.views.len() - 1) % self.views.len();
+                self.views[self.current_view_idx].set_needs_redraw(true);
+                self.reset_quit_times();
+            }
+            "n" | "next" => {
+                self.current_view_idx = (self.current_view_idx + 1) % self.views.len();
+                self.views[self.current_view_idx].set_needs_redraw(true);
+                self.reset_quit_times();
+            }
+            "o" | "open" => {
+                if let Some(path) = arg {
+                    let mut new_view = View::default();
+                    new_view.resize(Size {
+                        height: self.terminal_size.height.saturating_sub(2),
+                        width: self.terminal_size.width,
+                    });
+                    if new_view.load(path).is_err() {
+                        self.update_message(&format!("ERR: Could not open file: {path}"));
+                    } else {
+                        self.views.push(new_view);
+                        self.current_view_idx = self.views.len() - 1;
+                        self.update_message(&format!("Opened file: {path}"));
+                        self.reset_quit_times();
+                    }
+                } else {
+                    self.update_message("ERR: No file name provided");
                 }
             }
             _ => self.update_message(&format!("ERR: Unknown command: {cmd}")),
@@ -847,10 +910,12 @@ impl Editor {
 
     fn handle_resize_command(&mut self, size: Size) {
         self.terminal_size = size;
-        self.view.resize(Size {
-            height: size.height.saturating_sub(2),
-            width: size.width,
-        });
+        for view in &mut self.views {
+            view.resize(Size {
+                height: size.height.saturating_sub(2),
+                width: size.width,
+            });
+        }
         let bar_size = Size {
             height: 1,
             width: size.width,
@@ -867,17 +932,27 @@ impl Editor {
     // clippy::arithmetic_side_effects: quit_times is guaranteed to be between 0 and QUIT_TIMES
     #[allow(clippy::arithmetic_side_effects)]
     fn handle_quit_command(&mut self) {
-        if !self.view.get_status(self.mode.to_string()).is_modified
-            || self.quit_times + 1 == QUIT_TIMES
-        {
+        if self.quit_times + 1 == QUIT_TIMES {
             self.should_quit = true;
-        } else if self.view.get_status(self.mode.to_string()).is_modified {
+            return;
+        }
+
+        self.views
+            .retain(|v| v.get_status(self.mode.to_string()).is_modified);
+
+        if self.views.is_empty() {
+            self.should_quit = true;
+        } else {
+            if self.current_view_idx >= self.views.len() {
+                self.current_view_idx = self.views.len() - 1;
+            }
+            let dirty_count = self.views.len();
             self.update_message(&format!(
-                "WARNING! File has unsaved changes. Type :q {} more times to quit.",
+                "WARNING! {dirty_count} buffer(s) have unsaved changes. Type :q {} more times to quit.",
                 QUIT_TIMES - self.quit_times - 1
             ));
-
             self.quit_times += 1;
+            self.views[self.current_view_idx].set_needs_redraw(true);
         }
     }
     fn reset_quit_times(&mut self) {
@@ -891,7 +966,7 @@ impl Editor {
     // region save command & prompt handling
 
     fn handle_save_command(&mut self) {
-        if self.view.is_file_loaded() {
+        if self.views[self.current_view_idx].is_file_loaded() {
             self.save(None);
         } else {
             self.set_prompt(PromptType::Save);
@@ -914,9 +989,9 @@ impl Editor {
     }
     fn save(&mut self, file_name: Option<&str>) {
         let result = if let Some(name) = file_name {
-            self.view.save_as(name)
+            self.views[self.current_view_idx].save_as(name)
         } else {
-            self.view.save()
+            self.views[self.current_view_idx].save()
         };
         if result.is_ok() {
             self.update_message("File saved successfully.");
@@ -932,22 +1007,22 @@ impl Editor {
         match command {
             Command::System(System::Dismiss) => {
                 self.set_prompt(PromptType::None);
-                self.view.dismiss_search();
+                self.views[self.current_view_idx].dismiss_search();
             }
             Command::Edit(Edit::InsertNewline) => {
                 self.set_prompt(PromptType::None);
-                self.view.exit_search();
+                self.views[self.current_view_idx].exit_search();
             }
             Command::Edit(edit_command) => {
                 self.command_bar.handle_edit_command(edit_command);
                 let query = self.command_bar.value();
-                self.view.search(&query);
+                self.views[self.current_view_idx].search(&query);
             }
             Command::Move(Move::Right(_) | Move::Down(_)) => {
-                self.view.search_next();
+                self.views[self.current_view_idx].search_next();
             }
             Command::Move(Move::Up(_) | Move::Left(_)) => {
-                self.view.search_prev();
+                self.views[self.current_view_idx].search_prev();
             }
             Command::System(System::Resize(_)) | Command::Move(_) => {} // Not applicable during search, Resize already handled at this stage
         }
@@ -971,7 +1046,7 @@ impl Editor {
             PromptType::Save => self.command_bar.set_prompt("Save as: "),
             PromptType::Command => self.command_bar.set_prompt(":"),
             PromptType::Search => {
-                self.view.enter_search();
+                self.views[self.current_view_idx].enter_search();
                 self.command_bar
                     .set_prompt("Search (Esc to cancel, Arrows to navigate): ");
             }
