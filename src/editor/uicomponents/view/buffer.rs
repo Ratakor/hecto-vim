@@ -324,7 +324,7 @@ impl Buffer {
             if at.grapheme_idx > 0 {
                 let char_before =
                     line.get_substring(at.grapheme_idx.saturating_sub(1)..at.grapheme_idx);
-                if char_before == "{" {
+                if char_before == "{" || char_before == "[" || char_before == "(" {
                     for _ in 0..self.indent_size() {
                         indent_string.push(' ');
                     }
@@ -522,6 +522,46 @@ mod tests {
         buffer.insert_enter(at);
         assert_eq!(buffer.lines.len(), 2);
         assert_eq!(buffer.lines[0].to_string(), "fn x() {");
+        assert_eq!(buffer.lines[1].to_string(), "    ");
+    }
+
+    #[test]
+    fn test_insert_enter_bracket_indentation() {
+        let mut buffer = Buffer {
+            lines: vec![Line::from("let x = [")],
+            file_info: FileInfo::default(),
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
+            saved_state_index: Some(0),
+        };
+        let at = Location {
+            line_idx: 0,
+            grapheme_idx: 9, // end of "let x = ["
+            preferred_grapheme_idx: 9,
+        };
+        buffer.insert_enter(at);
+        assert_eq!(buffer.lines.len(), 2);
+        assert_eq!(buffer.lines[0].to_string(), "let x = [");
+        assert_eq!(buffer.lines[1].to_string(), "    ");
+    }
+
+    #[test]
+    fn test_insert_enter_paren_indentation() {
+        let mut buffer = Buffer {
+            lines: vec![Line::from("foo(")],
+            file_info: FileInfo::default(),
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
+            saved_state_index: Some(0),
+        };
+        let at = Location {
+            line_idx: 0,
+            grapheme_idx: 4, // end of "foo("
+            preferred_grapheme_idx: 4,
+        };
+        buffer.insert_enter(at);
+        assert_eq!(buffer.lines.len(), 2);
+        assert_eq!(buffer.lines[0].to_string(), "foo(");
         assert_eq!(buffer.lines[1].to_string(), "    ");
     }
 

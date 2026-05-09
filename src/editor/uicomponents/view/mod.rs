@@ -634,7 +634,7 @@ impl View {
         if matches!(character, ')' | ']' | '}' | '"' | '\'' | '`') {
             let next_char = self.get_current_character();
             if next_char == character.to_string() {
-                if character == '}' {
+                if character == '}' || character == ']' || character == ')' {
                     self.auto_deindent();
                 }
                 self.handle_move_command(Move::Right(1));
@@ -658,7 +658,7 @@ impl View {
             return;
         }
 
-        if character == '}' {
+        if character == '}' || character == ']' || character == ')' {
             self.auto_deindent();
         }
         let old_len = self.buffer.grapheme_count(self.text_location.line_idx);
