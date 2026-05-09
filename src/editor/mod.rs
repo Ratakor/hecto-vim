@@ -86,6 +86,8 @@ HELP - ALL COMMANDS
   :syntax    : Toggle syntax highlighting
   :next, :n  : Next buffer
   :prev, :p  : Previous buffer
+  :rl        : Reload current buffer from disk
+  :rla       : Reload all buffers from disk
   :o [path]  : Open file
   :help      : Show this help
 
@@ -1269,6 +1271,41 @@ impl Editor {
                 self.current_view_idx = self.views.len() - 1;
                 self.message_bar.info("Opened help");
                 self.reset_quit_times();
+            }
+            "rl" | "reload" => {
+                let status = self.views[self.current_view_idx].get_status(&self.mode.to_string());
+                match self.views[self.current_view_idx].reload() {
+                    Ok(true) => {
+                        self.message_bar
+                            .info(&format!("File {} reloaded from disk", status.file_name));
+                    }
+                    Ok(false) => {
+                        self.message_bar
+                            .info(&format!("File {} is already up to date", status.file_name));
+                    }
+                    Err(e) => {
+                        self.message_bar
+                            .error(&format!("Could not reload file: {e}"));
+                    }
+                }
+            }
+            "rla" | "reload-all" => {
+                let mut reloaded_count = 0;
+                let mut up_to_date_count = 0;
+                let mut error_count = 0;
+
+                for i in 0..self.views.len() {
+                    match self.views[i].reload() {
+                        Ok(true) => reloaded_count += 1,
+                        Ok(false) => up_to_date_count += 1,
+                        Err(_) => error_count += 1,
+                    }
+                }
+
+                self.message_bar.info(&format!(
+                    "Reloaded {} files, {} already up to date, {} errors",
+                    reloaded_count, up_to_date_count, error_count
+                ));
             }
             _ => self.message_bar.error(&format!("Unknown command: {cmd}")),
         }
