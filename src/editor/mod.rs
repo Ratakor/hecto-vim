@@ -774,6 +774,10 @@ impl Editor {
                         self.clipboard = self.views[self.current_view_idx].get_current_character();
                         self.message_bar.info("Character copied to clipboard.");
                     }
+                    if self.mode == EditorMode::Visual {
+                        self.mode = EditorMode::Normal;
+                        self.views[self.current_view_idx].clear_selection();
+                    }
                 }
                 (KeyCode::Char('v'), KeyModifiers::NONE) => {
                     if self.mode == EditorMode::Visual {
@@ -931,6 +935,10 @@ impl Editor {
                                         .info("Character copied to system clipboard.");
                                 }
                             }
+                        }
+                        if self.mode == EditorMode::Visual {
+                            self.mode = EditorMode::Normal;
+                            self.views[self.current_view_idx].clear_selection();
                         }
                     }
                     (KeyCode::Char('p'), KeyModifiers::NONE) => {
