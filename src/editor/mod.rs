@@ -1208,7 +1208,7 @@ impl Editor {
                 self.views[self.current_view_idx].set_needs_redraw(true);
                 self.reset_quit_times();
             }
-            "o" | "open" => {
+            "o" | "open" | "e" | "edit" => {
                 if let Some(path) = arg {
                     self.record_jump();
                     let mut new_view = View::default();
@@ -1460,11 +1460,26 @@ impl Editor {
                 let cmd = parts[0];
                 if matches!(cmd, "w" | "write" | "o" | "open" | "wq" | "x") {
                     let path_to_complete = if parts.len() == 2 { parts[1] } else { "" };
-                    if let Ok(entries) = std::fs::read_dir(".") {
+                    let (dir, file_prefix) = if let Some(last_slash_idx) = path_to_complete.rfind('/') {
+                        let (d, f) = path_to_complete.split_at(last_slash_idx + 1);
+                        (d, f)
+                    } else {
+                        (".", path_to_complete)
+                    };
+
+                    if let Ok(entries) = std::fs::read_dir(dir) {
                         for entry in entries.flatten() {
                             if let Ok(name) = entry.file_name().into_string() {
-                                if name.starts_with(path_to_complete) {
-                                    matches.push(name);
+                                if name.starts_with(file_prefix) {
+                                    let mut full_path = if dir == "." {
+                                        name
+                                    } else {
+                                        format!("{dir}{name}")
+                                    };
+                                    if entry.path().is_dir() {
+                                        full_path.push('/');
+                                    }
+                                    matches.push(full_path);
                                 }
                             }
                         }
@@ -1501,7 +1516,12 @@ impl Editor {
                     {
                         original.as_ref().map_or(0, String::len)
                     } else {
-                        current_value.split_whitespace().nth(1).map_or(0, str::len)
+                        let full_prefix = current_value.split_whitespace().nth(1).unwrap_or("");
+                        if let Some(last_slash_idx) = full_prefix.rfind('/') {
+                            full_prefix.len().saturating_sub(last_slash_idx + 1)
+                        } else {
+                            full_prefix.len()
+                        }
                     };
 
                     if lcp.len() > prefix_len {
