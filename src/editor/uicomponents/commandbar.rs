@@ -66,6 +66,10 @@ impl CommandBar {
         self.prompt = prompt.to_string();
         self.set_needs_redraw(true);
     }
+    pub fn clear(&mut self) {
+        self.prompt.clear();
+        self.clear_value();
+    }
     pub fn clear_value(&mut self) {
         self.value = Line::default();
         self.caret_pos = 0;

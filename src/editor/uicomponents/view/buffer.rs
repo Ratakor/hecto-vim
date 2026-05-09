@@ -72,6 +72,15 @@ impl Buffer {
         None
     }
 
+    pub fn replace_lines(&mut self, new_lines: Vec<Line>, at: Location) {
+        self.push_undo(at);
+        self.lines = new_lines;
+    }
+
+    pub fn set_saved(&mut self) {
+        self.saved_state_index = Some(self.undo_stack.len());
+    }
+
     pub fn grapheme_count(&self, idx: LineIdx) -> GraphemeIdx {
         self.lines.get(idx).map_or(0, Line::grapheme_count)
     }
@@ -232,13 +241,13 @@ impl Buffer {
         let file_info = FileInfo::from(file_name);
         self.save_to_file(&file_info)?;
         self.file_info = file_info;
-        self.saved_state_index = Some(self.undo_stack.len());
+        self.set_saved();
         Ok(())
     }
 
     pub fn save(&mut self) -> Result<(), Error> {
         self.save_to_file(&self.file_info)?;
-        self.saved_state_index = Some(self.undo_stack.len());
+        self.set_saved();
         Ok(())
     }
 

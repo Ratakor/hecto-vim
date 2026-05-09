@@ -96,6 +96,10 @@ impl View {
         String::new()
     }
 
+    pub fn get_path(&self) -> Option<&std::path::Path> {
+        self.buffer.get_file_info().get_path()
+    }
+
     pub fn get_lsp_position(&self) -> lsp_types::Position {
         lsp_types::Position {
             line: self.text_location.line_idx as u32,
@@ -106,6 +110,24 @@ impl View {
     pub fn update_diagnostics(&mut self, diagnostics: Vec<lsp_types::Diagnostic>) {
         self.diagnostics = diagnostics;
         self.set_needs_redraw(true);
+    }
+
+    pub fn reload(&mut self) -> Result<(), Error> {
+        if let Some(path) = self.buffer.get_file_info().get_path() {
+            let content = std::fs::read_to_string(path)?;
+            let new_lines: Vec<Line> = content.lines().map(Line::from).collect();
+            let new_lines = if new_lines.is_empty() {
+                vec![Line::default()]
+            } else {
+                new_lines
+            };
+            self.buffer.replace_lines(new_lines, self.text_location);
+            self.buffer.set_saved();
+            self.set_needs_redraw(true);
+            Ok(())
+        } else {
+            Err(Error::new(std::io::ErrorKind::Other, "No file path"))
+        }
     }
 
     pub fn get_text(&self) -> String {

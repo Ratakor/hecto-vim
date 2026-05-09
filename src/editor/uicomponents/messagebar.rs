@@ -40,6 +40,24 @@ impl MessageBar {
         self.set_needs_redraw(true);
     }
 
+    pub fn info(&mut self, message: &str) {
+        // self.update_message(&format!("INFO: {message}"));
+        self.update_message(message);
+    }
+
+    pub fn warn(&mut self, message: &str) {
+        self.update_message(&format!("WARN: {message}"));
+    }
+
+    pub fn error(&mut self, message: &str) {
+        self.update_message(&format!("ERR: {message}"));
+    }
+
+    pub fn clear(&mut self) {
+        self.current_message = None;
+        self.set_needs_redraw(true);
+    }
+
     pub fn update_command_buffer(&mut self, new_buffer: &str) {
         if new_buffer != self.command_buffer {
             self.command_buffer = new_buffer.to_string();

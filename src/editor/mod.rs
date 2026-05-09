@@ -24,6 +24,7 @@ mod uicomponents;
 
 pub use annotationtype::AnnotationType;
 use lsp::{LspManager, LspMessage};
+use notify::{Config, Event as WatcherEvent, RecommendedWatcher, RecursiveMode, Watcher};
 use serde_json::{Value, json};
 mod annotation;
 use annotation::Annotation;
@@ -32,6 +33,7 @@ use annotatedstring::AnnotatedString;
 use documentstatus::DocumentStatus;
 use filetype::FileType;
 use line::Line;
+use std::sync::mpsc::{Receiver as MpscReceiver, channel as mpsc_channel};
 use terminal::Terminal;
 use uicomponents::{
     CommandBar, ContextMenu, ContextMenuAction, InfoPopup, MessageBar, StatusBar, UIComponent, View,
@@ -163,6 +165,8 @@ pub struct Editor {
     command_buffer: Vec<KeyEvent>,
     count: Option<usize>,
     context_menu: Option<ContextMenu>,
+    file_watcher: RecommendedWatcher,
+    file_event_receiver: MpscReceiver<notify::Result<WatcherEvent>>,
 }
 
 impl Editor {
@@ -180,6 +184,10 @@ impl Editor {
         Terminal::initialize()?;
 
         let size = Terminal::size().unwrap_or_default();
+        let (tx, rx) = mpsc_channel();
+        let watcher = RecommendedWatcher::new(tx, Config::default())
+            .map_err(|e| Error::new(std::io::ErrorKind::Other, e))?;
+
         let mut editor = Self {
             should_quit: false,
             views: vec![View::default()],
@@ -207,6 +215,8 @@ impl Editor {
             command_buffer: Vec::new(),
             count: None,
             context_menu: None,
+            file_watcher: watcher,
+            file_event_receiver: rx,
         };
         editor.handle_resize_command(size);
 
@@ -216,9 +226,12 @@ impl Editor {
             debug_assert!(!file_name.is_empty());
             if first {
                 if editor.views[0].load(file_name).is_err() {
-                    editor.update_message(&format!("ERR: Could not open file: {file_name}"));
+                    editor
+                        .message_bar
+                        .error(&format!("Could not open file: {file_name}"));
                 } else {
                     editor.notify_lsp_did_open(0);
+                    let _ = editor.watch_view(0);
                     first = false;
                 }
             } else {
@@ -228,10 +241,14 @@ impl Editor {
                     width: size.width,
                 });
                 if new_view.load(file_name).is_err() {
-                    editor.update_message(&format!("ERR: Could not open file: {file_name}"));
+                    editor
+                        .message_bar
+                        .error(&format!("Could not open file: {file_name}"));
                 } else {
                     editor.views.push(new_view);
-                    editor.notify_lsp_did_open(editor.views.len() - 1);
+                    let view_idx = editor.views.len() - 1;
+                    editor.notify_lsp_did_open(view_idx);
+                    let _ = editor.watch_view(view_idx);
                 }
             }
         }
@@ -271,6 +288,10 @@ impl Editor {
                 }
             }
 
+            if self.handle_file_events() {
+                event_processed = true;
+            }
+
             if event_processed {
                 self.refresh_status();
                 self.refresh_screen();
@@ -281,6 +302,44 @@ impl Editor {
                 self.refresh_screen();
             }
         }
+    }
+
+    fn handle_file_events(&mut self) -> bool {
+        let mut handled = false;
+        while let Ok(Ok(event)) = self.file_event_receiver.try_recv() {
+            if event.kind.is_modify() {
+                for path in event.paths {
+                    for i in 0..self.views.len() {
+                        let view = &mut self.views[i];
+                        if view.get_uri() == format!("file://{}", path.display()) {
+                            let status = view.get_status(&self.mode.to_string());
+                            if status.is_modified {
+                                self.message_bar.warn(&format!(
+                                    "File {} has changed on disk",
+                                    status.file_name
+                                ));
+                            } else if view.reload().is_ok() {
+                                self.message_bar
+                                    .info(&format!("File {} reloaded from disk", status.file_name));
+                                handled = true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        handled
+    }
+
+    fn watch_view(&mut self, view_idx: usize) -> Result<(), Error> {
+        if let Some(path) = self.views[view_idx].get_path() {
+            if let Ok(abs_path) = std::fs::canonicalize(path) {
+                self.file_watcher
+                    .watch(&abs_path, RecursiveMode::NonRecursive)
+                    .map_err(|e| Error::new(std::io::ErrorKind::Other, e))?;
+            }
+        }
+        Ok(())
     }
 
     fn handle_lsp_messages(&mut self) -> bool {
@@ -710,10 +769,10 @@ impl Editor {
                 (KeyCode::Char('y'), KeyModifiers::NONE) => {
                     if let Some(text) = self.views[self.current_view_idx].get_selected_text() {
                         self.clipboard = text;
-                        self.update_message("Text copied to clipboard.");
+                        self.message_bar.info("Text copied to clipboard.");
                     } else {
                         self.clipboard = self.views[self.current_view_idx].get_current_character();
-                        self.update_message("Character copied to clipboard.");
+                        self.message_bar.info("Character copied to clipboard.");
                     }
                 }
                 (KeyCode::Char('v'), KeyModifiers::NONE) => {
@@ -779,7 +838,7 @@ impl Editor {
                     if self.mode == EditorMode::Visual {
                         self.mode = EditorMode::Normal;
                     }
-                    self.update_message("");
+                    self.message_bar.clear();
                 }
                 (KeyCode::Enter, KeyModifiers::NONE) => {
                     // Do nothing in Normal/Visual mode for Enter
@@ -791,7 +850,7 @@ impl Editor {
         }
 
         if self.command_buffer.len() == 2 {
-            self.update_message("");
+            self.message_bar.clear();
             let second_key = self.command_buffer[1];
             let second_code = second_key.code;
             let second_mod = second_key.modifiers;
@@ -863,12 +922,13 @@ impl Editor {
 
                         if let Some(text) = text {
                             if let Err(e) = self.system_clipboard.set_text(text) {
-                                self.update_message(&format!("ERR: Clipboard error: {e}"));
+                                self.message_bar.error(&format!("Clipboard error: {e}"));
                             } else {
                                 if self.views[self.current_view_idx].get_selection().is_some() {
-                                    self.update_message("Text copied to system clipboard.");
+                                    self.message_bar.info("Text copied to system clipboard.");
                                 } else {
-                                    self.update_message("Character copied to system clipboard.");
+                                    self.message_bar
+                                        .info("Character copied to system clipboard.");
                                 }
                             }
                         }
@@ -888,7 +948,7 @@ impl Editor {
                     (KeyCode::Char('d'), KeyModifiers::NONE) => {
                         if let Some(text) = self.views[self.current_view_idx].get_selected_text() {
                             if let Err(e) = self.system_clipboard.set_text(text) {
-                                self.update_message(&format!("ERR: Clipboard error: {e}"));
+                                self.message_bar.error(&format!("Clipboard error: {e}"));
                             } else {
                                 self.views[self.current_view_idx].delete_selection();
                                 self.mode = EditorMode::Normal;
@@ -938,13 +998,13 @@ impl Editor {
                                 {
                                     self.clipboard = text.clone();
                                     let _ = self.system_clipboard.set_text(text);
-                                    self.update_message("Text copied to clipboard.");
+                                    self.message_bar.info("Text copied to clipboard.");
                                 } else {
                                     let text =
                                         self.views[self.current_view_idx].get_current_character();
                                     self.clipboard = text.clone();
                                     let _ = self.system_clipboard.set_text(text);
-                                    self.update_message("Character copied to clipboard.");
+                                    self.message_bar.info("Character copied to clipboard.");
                                 }
                             }
                             ContextMenuAction::Delete => {
@@ -954,7 +1014,7 @@ impl Editor {
                                     self.clipboard = text;
                                     self.views[self.current_view_idx].delete_selection();
                                     self.mode = EditorMode::Normal;
-                                    self.update_message("Selection deleted.");
+                                    self.message_bar.info("Selection deleted.");
                                 }
                             }
                             ContextMenuAction::Paste => {
@@ -1055,7 +1115,7 @@ impl Editor {
             Command::System(System::Resize(_)) => {}
             Command::System(System::Dismiss) => {
                 self.views[self.current_view_idx].clear_selection();
-                self.update_message("");
+                self.message_bar.clear();
             }
             Command::Edit(edit_command) => {
                 if self.mode == EditorMode::Normal
@@ -1169,16 +1229,18 @@ impl Editor {
                         width: self.terminal_size.width,
                     });
                     if new_view.load(path).is_err() {
-                        self.update_message(&format!("ERR: Could not open file: {path}"));
+                        self.message_bar
+                            .error(&format!("Could not open file: {path}"));
                     } else {
                         self.views.push(new_view);
                         self.current_view_idx = self.views.len() - 1;
                         self.notify_lsp_did_open(self.current_view_idx);
-                        self.update_message(&format!("Opened file: {path}"));
+                        let _ = self.watch_view(self.current_view_idx);
+                        self.message_bar.info(&format!("Opened file: {path}"));
                         self.reset_quit_times();
                     }
                 } else {
-                    self.update_message("ERR: No file name provided");
+                    self.message_bar.error("No file name provided");
                 }
             }
             "h" | "help" => {
@@ -1193,10 +1255,10 @@ impl Editor {
                 );
                 self.views.push(new_view);
                 self.current_view_idx = self.views.len() - 1;
-                self.update_message("Opened help");
+                self.message_bar.info("Opened help");
                 self.reset_quit_times();
             }
-            _ => self.update_message(&format!("ERR: Unknown command: {cmd}")),
+            _ => self.message_bar.error(&format!("Unknown command: {cmd}")),
         }
     }
 
@@ -1288,8 +1350,8 @@ impl Editor {
                 self.current_view_idx = self.views.len() - 1;
             }
             let dirty_count = self.views.len();
-            self.update_message(&format!(
-                "WARNING! {dirty_count} buffer(s) have unsaved changes. Type :q {} more times to quit.",
+            self.message_bar.warn(&format!(
+                "{dirty_count} buffer(s) have unsaved changes. Type :q {} more times to quit.",
                 QUIT_TIMES - self.quit_times - 1
             ));
             self.quit_times += 1;
@@ -1299,7 +1361,7 @@ impl Editor {
     fn reset_quit_times(&mut self) {
         if self.quit_times > 0 {
             self.quit_times = 0;
-            self.update_message("");
+            self.message_bar.clear();
         }
     }
     // end region
@@ -1310,7 +1372,7 @@ impl Editor {
         if self.views[self.current_view_idx].is_file_loaded() {
             self.save(None);
         } else {
-            self.update_message(&format!("ERR: Can't save without filename!"));
+            self.message_bar.error("Can't save without filename!");
         }
     }
     fn save(&mut self, file_name: Option<&str>) {
@@ -1320,9 +1382,10 @@ impl Editor {
             self.views[self.current_view_idx].save()
         };
         if result.is_ok() {
-            self.update_message("File saved successfully.");
+            let _ = self.watch_view(self.current_view_idx);
+            self.message_bar.info("File saved successfully.");
         } else {
-            self.update_message("Error writing file!");
+            self.message_bar.error("Error writing file!");
         }
     }
 
@@ -1357,12 +1420,6 @@ impl Editor {
     }
     // endregion
 
-    // region message & command bar
-    fn update_message(&mut self, new_message: &str) {
-        self.message_bar.update_message(new_message);
-    }
-    // endregion
-
     //region prompt handling
     fn in_prompt(&self) -> bool {
         !self.prompt_type.is_none()
@@ -1370,10 +1427,13 @@ impl Editor {
 
     fn set_prompt(&mut self, prompt_type: PromptType) {
         if !prompt_type.is_none() {
-            self.update_message("");
+            self.message_bar.clear();
         }
         match prompt_type {
-            PromptType::None => self.message_bar.set_needs_redraw(true), //Ensures the message bar is properly painted during the next redraw cycle
+            PromptType::None => {
+                self.message_bar.set_needs_redraw(true); //Ensures the message bar is properly painted during the next redraw cycle
+                self.command_bar.clear();
+            }
             PromptType::Command => self.command_bar.set_prompt(":"),
             PromptType::Search => {
                 self.views[self.current_view_idx].enter_search();
