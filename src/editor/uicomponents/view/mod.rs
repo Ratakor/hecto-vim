@@ -275,9 +275,13 @@ impl View {
     }
 
     pub fn delete_selection(&mut self) {
-        if let Some((start, end)) = self.get_selection() {
+        if let Some((mut start, mut end)) = self.get_selection() {
+            if start > end {
+                std::mem::swap(&mut start, &mut end);
+            }
+            let end = self.next_location(end);
             self.buffer.delete_range(start, end);
-            self.text_location = if start <= end { start } else { end };
+            self.text_location = start;
             self.selection_start = None;
             self.set_needs_redraw(true);
         }
@@ -597,13 +601,13 @@ impl View {
     }
     fn delete(&mut self) {
         let char_at_cursor = self.get_current_character();
-        let mut next_location = self.text_location;
-        next_location.grapheme_idx = next_location.grapheme_idx.saturating_add(1);
+        let next_location = self.next_location(self.text_location);
         let char_after_cursor = self.buffer.get_range(next_location, next_location);
 
         match (char_at_cursor.as_str(), char_after_cursor.as_str()) {
             ("(", ")") | ("[", "]") | ("{", "}") | ("\"", "\"") | ("'", "'") | ("`", "`") => {
-                self.buffer.delete_range(self.text_location, next_location);
+                let end = self.next_location(next_location);
+                self.buffer.delete_range(self.text_location, end);
             }
             _ => self.buffer.delete(self.text_location),
         }
@@ -678,7 +682,7 @@ impl View {
             };
             let end = Location {
                 line_idx: self.text_location.line_idx,
-                grapheme_idx: indent_size.saturating_sub(1),
+                grapheme_idx: indent_size,
                 preferred_grapheme_idx: 0,
             };
             self.buffer.delete_range(start, end);
@@ -772,6 +776,18 @@ impl View {
             .buffer
             .width_until(row, self.text_location.grapheme_idx);
         Position { col, row }
+    }
+
+    fn next_location(&self, location: Location) -> Location {
+        let mut next = location;
+        let grapheme_count = self.buffer.grapheme_count(location.line_idx);
+        if location.grapheme_idx < grapheme_count {
+            next.grapheme_idx += 1;
+        } else if location.line_idx.saturating_add(1) < self.buffer.height() {
+            next.line_idx += 1;
+            next.grapheme_idx = 0;
+        }
+        next
     }
 
     // endregion
