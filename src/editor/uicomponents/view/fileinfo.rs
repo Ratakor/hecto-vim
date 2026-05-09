@@ -21,19 +21,11 @@ impl FileInfo {
     }
     pub fn from(file_name: &str) -> Self {
         let path = PathBuf::from(file_name);
-        let file_type = if let Some(ext) = path.extension() {
-            if ext.eq_ignore_ascii_case("rs") {
-                FileType::Rust
-            } else if ext.eq_ignore_ascii_case("js") {
-                FileType::JavaScript
-            } else if ext.eq_ignore_ascii_case("zig") {
-                FileType::Zig
-            } else {
-                FileType::Text
-            }
-        } else {
-            FileType::Text
-        };
+        let file_type = path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .map(FileType::from_extension)
+            .unwrap_or_default();
         Self {
             path: Some(path),
             display_name: None,

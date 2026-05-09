@@ -74,7 +74,7 @@ impl View {
         }
         false
     }
-    pub fn get_status(&self, mode: String) -> DocumentStatus {
+    pub fn get_status(&self, mode: &str) -> DocumentStatus {
         let file_info = self.buffer.get_file_info();
         DocumentStatus {
             total_lines: self.buffer.height(),
@@ -83,7 +83,7 @@ impl View {
             file_name: format!("{file_info}"),
             is_modified: self.buffer.is_dirty(),
             file_type: file_info.get_file_type(),
-            mode,
+            mode: mode.to_string(),
         }
     }
 
@@ -106,17 +106,6 @@ impl View {
     pub fn update_diagnostics(&mut self, diagnostics: Vec<lsp_types::Diagnostic>) {
         self.diagnostics = diagnostics;
         self.set_needs_redraw(true);
-    }
-
-    pub fn get_diagnostics_at(&self, pos: lsp_types::Position) -> Vec<lsp_types::Diagnostic> {
-        self.diagnostics
-            .iter()
-            .filter(|d| {
-                let r = d.range;
-                pos >= r.start && pos < r.end
-            })
-            .cloned()
-            .collect()
     }
 
     pub fn get_text(&self) -> String {

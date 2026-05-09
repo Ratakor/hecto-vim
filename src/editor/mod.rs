@@ -24,7 +24,7 @@ mod uicomponents;
 
 pub use annotationtype::AnnotationType;
 use lsp::{LspManager, LspMessage};
-use serde_json::json;
+use serde_json::{Value, json};
 mod annotation;
 use annotation::Annotation;
 mod filetype;
@@ -319,25 +319,7 @@ impl Editor {
                     match req_type {
                         LspRequestType::Hover => {
                             if let Ok(hover) = serde_json::from_value::<lsp_types::Hover>(result) {
-                                let text = match hover.contents {
-                                    lsp_types::HoverContents::Scalar(marked_string) => {
-                                        match marked_string {
-                                            lsp_types::MarkedString::String(s) => s,
-                                            lsp_types::MarkedString::LanguageString(ls) => ls.value,
-                                        }
-                                    }
-                                    lsp_types::HoverContents::Array(vec) => vec
-                                        .iter()
-                                        .map(|ms| match ms {
-                                            lsp_types::MarkedString::String(s) => s.clone(),
-                                            lsp_types::MarkedString::LanguageString(ls) => {
-                                                ls.value.clone()
-                                            }
-                                        })
-                                        .collect::<Vec<_>>()
-                                        .join("\n"),
-                                    lsp_types::HoverContents::Markup(markup) => markup.value,
-                                };
+                                let text = extract_hover_text(hover.contents);
                                 if !text.is_empty() {
                                     let pos = self.views[view_idx].caret_position();
                                     self.info_popup =
@@ -418,7 +400,7 @@ impl Editor {
 
     fn notify_lsp_did_open(&mut self, view_idx: usize) {
         let view = &self.views[view_idx];
-        let file_type = view.get_status(String::new()).file_type;
+        let file_type = view.get_status("").file_type;
         let uri = view.get_uri();
         if uri.is_empty() {
             return;
@@ -428,12 +410,7 @@ impl Editor {
             let params = json!({
                 "textDocument": {
                     "uri": uri,
-                    "languageId": match file_type {
-                        FileType::Rust => "rust",
-                        FileType::JavaScript => "javascript",
-                        FileType::Zig => "zig",
-                        FileType::Text => "text",
-                    },
+                    "languageId": file_type.language_id(),
                     "version": 1,
                     "text": view.get_text()
                 }
@@ -444,7 +421,7 @@ impl Editor {
 
     fn notify_lsp_did_change(&mut self, view_idx: usize) {
         let view = &self.views[view_idx];
-        let file_type = view.get_status(String::new()).file_type;
+        let file_type = view.get_status("").file_type;
         let uri = view.get_uri();
         if uri.is_empty() {
             return;
@@ -465,65 +442,40 @@ impl Editor {
     }
 
     fn lsp_hover(&mut self) {
-        let view = &self.views[self.current_view_idx];
-        let file_type = view.get_status(String::new()).file_type;
-        let uri = view.get_uri();
-        if uri.is_empty() {
-            return;
-        }
-
-        if let Some(client) = self.lsp_manager.get_client(file_type) {
-            let params = json!({
-                "textDocument": { "uri": uri },
-                "position": view.get_lsp_position()
-            });
-            let id = client.send_request("textDocument/hover", params);
-            self.pending_requests
-                .insert(id, (self.current_view_idx, LspRequestType::Hover));
-        }
+        let params = json!({
+            "textDocument": { "uri": self.views[self.current_view_idx].get_uri() },
+            "position": self.views[self.current_view_idx].get_lsp_position()
+        });
+        self.send_lsp_request("textDocument/hover", LspRequestType::Hover, params);
     }
 
     fn lsp_goto_definition(&mut self) {
         self.record_jump();
-        let view = &self.views[self.current_view_idx];
-        let file_type = view.get_status(String::new()).file_type;
-        let uri = view.get_uri();
-        if uri.is_empty() {
-            return;
-        }
-
-        if let Some(client) = self.lsp_manager.get_client(file_type) {
-            let params = json!({
-                "textDocument": { "uri": uri },
-                "position": view.get_lsp_position()
-            });
-            let id = client.send_request("textDocument/definition", params);
-            self.pending_requests
-                .insert(id, (self.current_view_idx, LspRequestType::Definition));
-        }
+        let params = json!({
+            "textDocument": { "uri": self.views[self.current_view_idx].get_uri() },
+            "position": self.views[self.current_view_idx].get_lsp_position()
+        });
+        self.send_lsp_request(
+            "textDocument/definition",
+            LspRequestType::Definition,
+            params,
+        );
     }
 
     fn lsp_format(&mut self) {
         self.record_jump();
-        let view = &self.views[self.current_view_idx];
-        let file_type = view.get_status(String::new()).file_type;
-        let uri = view.get_uri();
-        if uri.is_empty() {
-            return;
-        }
-
-        if let Some(client) = self.lsp_manager.get_client(file_type) {
-            let params = json!({
-                "textDocument": { "uri": uri },
-                "options": {
-                    "tabSize": 4,
-                    "insertSpaces": true
-                }
-            });
-            let id = client.send_request("textDocument/formatting", params);
-            self.pending_requests
-                .insert(id, (self.current_view_idx, LspRequestType::Formatting));
-        }
+        let params = json!({
+            "textDocument": { "uri": self.views[self.current_view_idx].get_uri() },
+            "options": {
+                "tabSize": 8,
+                "insertSpaces": true
+            }
+        });
+        self.send_lsp_request(
+            "textDocument/formatting",
+            LspRequestType::Formatting,
+            params,
+        );
     }
 
     fn refresh_screen(&mut self) {
@@ -598,7 +550,7 @@ impl Editor {
         );
         self.message_bar.update_command_buffer(&command_buffer);
 
-        let status = self.views[self.current_view_idx].get_status(self.mode.to_string());
+        let status = self.views[self.current_view_idx].get_status(&self.mode.to_string());
         let title = format!("{} - {NAME}", status.file_name);
         self.status_bar.update_status(status);
         if title != self.title && matches!(Terminal::set_title(&title), Ok(())) {
@@ -1189,7 +1141,7 @@ impl Editor {
                     self.save(None);
                 }
                 if !self.views[self.current_view_idx]
-                    .get_status(self.mode.to_string())
+                    .get_status(&self.mode.to_string())
                     .is_modified
                 {
                     self.should_quit = true;
@@ -1321,7 +1273,7 @@ impl Editor {
         }
 
         self.views
-            .retain(|v| v.get_status(self.mode.to_string()).is_modified);
+            .retain(|v| v.get_status(&self.mode.to_string()).is_modified);
 
         self.jump_list = vec![JumpEntry {
             view_idx: 0,
@@ -1446,10 +1398,9 @@ impl Editor {
             if parts.len() == 1 && !current_value.ends_with(' ') {
                 let cmd_to_complete = parts[0];
                 let commands = [
-                    "q", "quit", "q!", "quit!", "w", "write", "syntax", "format", "wq", "x", "p",
-                    "prev", "n", "next", "o", "open", "h", "help",
+                    "q", "quit", "q!", "quit!", "w", "write", "syntax", "format", "fmt", "wq", "x",
+                    "p", "prev", "n", "next", "o", "open", "e", "edit", "h", "help",
                 ];
-
                 matches = commands
                     .iter()
                     .filter(|cmd| cmd.starts_with(cmd_to_complete))
@@ -1458,32 +1409,12 @@ impl Editor {
                 original = Some(cmd_to_complete.to_string());
             } else if parts.len() <= 2 {
                 let cmd = parts[0];
-                if matches!(cmd, "w" | "write" | "o" | "open" | "wq" | "x") {
+                if matches!(
+                    cmd,
+                    "w" | "write" | "o" | "open" | "e" | "edit" | "wq" | "x"
+                ) {
                     let path_to_complete = if parts.len() == 2 { parts[1] } else { "" };
-                    let (dir, file_prefix) = if let Some(last_slash_idx) = path_to_complete.rfind('/') {
-                        let (d, f) = path_to_complete.split_at(last_slash_idx + 1);
-                        (d, f)
-                    } else {
-                        (".", path_to_complete)
-                    };
-
-                    if let Ok(entries) = std::fs::read_dir(dir) {
-                        for entry in entries.flatten() {
-                            if let Ok(name) = entry.file_name().into_string() {
-                                if name.starts_with(file_prefix) {
-                                    let mut full_path = if dir == "." {
-                                        name
-                                    } else {
-                                        format!("{dir}{name}")
-                                    };
-                                    if entry.path().is_dir() {
-                                        full_path.push('/');
-                                    }
-                                    matches.push(full_path);
-                                }
-                            }
-                        }
-                    }
+                    matches = self.complete_path(path_to_complete);
                     original = Some(current_value.clone());
                 }
             }
@@ -1562,6 +1493,52 @@ impl Editor {
         self.command_bar
             .set_completion_state(matches, index, original);
     }
+
+    fn complete_path(&self, path_to_complete: &str) -> Vec<String> {
+        let mut matches = Vec::new();
+        let (dir, file_prefix) = if let Some(last_slash_idx) = path_to_complete.rfind('/') {
+            let (d, f) = path_to_complete.split_at(last_slash_idx + 1);
+            (d, f)
+        } else {
+            (".", path_to_complete)
+        };
+
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                if let Ok(name) = entry.file_name().into_string() {
+                    if name.starts_with(file_prefix) {
+                        let mut full_path = if dir == "." {
+                            name
+                        } else {
+                            format!("{dir}{name}")
+                        };
+                        if let Ok(metadata) = entry.metadata() {
+                            if metadata.is_dir() {
+                                full_path.push('/');
+                            }
+                        }
+                        matches.push(full_path);
+                    }
+                }
+            }
+        }
+        matches
+    }
+
+    fn send_lsp_request(&mut self, method: &str, req_type: LspRequestType, params: Value) {
+        let view = &self.views[self.current_view_idx];
+        let file_type = view.get_status("").file_type;
+        let uri = view.get_uri();
+        if uri.is_empty() {
+            return;
+        }
+
+        if let Some(client) = self.lsp_manager.get_client(file_type) {
+            let id = client.send_request(method, params);
+            self.pending_requests
+                .insert(id, (self.current_view_idx, req_type));
+        }
+    }
 }
 
 fn longest_common_prefix(strings: &[&str]) -> String {
@@ -1577,6 +1554,25 @@ fn longest_common_prefix(strings: &[&str]) -> String {
         }
     }
     first.to_string()
+}
+
+fn extract_hover_text(contents: lsp_types::HoverContents) -> String {
+    match contents {
+        lsp_types::HoverContents::Scalar(ms) => marked_string_to_string(ms),
+        lsp_types::HoverContents::Array(vec) => vec
+            .into_iter()
+            .map(marked_string_to_string)
+            .collect::<Vec<_>>()
+            .join("\n"),
+        lsp_types::HoverContents::Markup(markup) => markup.value,
+    }
+}
+
+fn marked_string_to_string(ms: lsp_types::MarkedString) -> String {
+    match ms {
+        lsp_types::MarkedString::String(s) => s,
+        lsp_types::MarkedString::LanguageString(ls) => ls.value,
+    }
 }
 
 impl Drop for Editor {

@@ -1,4 +1,3 @@
-use lsp_types::*;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -159,12 +158,7 @@ impl LspManager {
 
     pub fn get_client(&mut self, file_type: crate::editor::FileType) -> Option<&mut LspClient> {
         if !self.clients.contains_key(&file_type) {
-            let (cmd, args) = match file_type {
-                crate::editor::FileType::Rust => ("rust-analyzer", vec![]),
-                crate::editor::FileType::JavaScript => ("typescript-language-server", vec!["--stdio"]),
-                crate::editor::FileType::Zig => ("zls", vec![]),
-                crate::editor::FileType::Text => return None,
-            };
+            let (cmd, args) = file_type.lsp_server()?;
 
             if let Some((mut client, rx)) = LspClient::new(cmd, &args) {
                 // Initialize

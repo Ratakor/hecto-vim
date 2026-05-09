@@ -252,7 +252,8 @@ impl Line {
         if let Some(fragment) = self.fragments.get(at) {
             let start = fragment.start;
             let end = fragment.start.saturating_add(fragment.grapheme.len());
-            self.string.replace_range(start..end, &character.to_string());
+            self.string
+                .replace_range(start..end, &character.to_string());
             self.rebuild_fragments();
         }
     }
@@ -267,10 +268,6 @@ impl Line {
             self.string.drain(start..end);
             self.rebuild_fragments();
         }
-    }
-
-    pub fn delete_last(&mut self) {
-        self.delete(self.grapheme_count().saturating_sub(1));
     }
 
     pub fn trim_end(&mut self) {
@@ -325,7 +322,8 @@ impl Line {
     }
     pub fn utf16_code_unit_to_grapheme_idx(&self, utf16_idx: usize) -> GraphemeIdx {
         let byte_idx = self.utf16_code_unit_to_byte_idx(utf16_idx);
-        self.byte_idx_to_grapheme_idx(byte_idx).unwrap_or(self.grapheme_count())
+        self.byte_idx_to_grapheme_idx(byte_idx)
+            .unwrap_or(self.grapheme_count())
     }
     pub fn search_forward(
         &self,
