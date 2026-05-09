@@ -27,6 +27,10 @@ impl TreeSitterHighlighter {
                 tree_sitter_zig::LANGUAGE.into(),
                 tree_sitter_zig::HIGHLIGHTS_QUERY,
             ),
+            FileType::Nix => (
+                tree_sitter_nix::LANGUAGE.into(),
+                tree_sitter_nix::HIGHLIGHTS_QUERY,
+            ),
             FileType::Text => panic!("Cannot create TreeSitterHighlighter for Text"),
         };
         parser
@@ -251,5 +255,27 @@ mod tests {
         assert!(annotations_1
             .iter()
             .any(|a| a.annotation_type == AnnotationType::Number));
+    }
+
+    #[test]
+    fn test_nix_highlighting() {
+        let mut highlighter = TreeSitterHighlighter::new(FileType::Nix);
+        let source = "let\n  x = 123;\nin\nx";
+        highlighter.update(source);
+
+        let annotations_0 = highlighter.get_annotations(0).unwrap();
+        assert!(annotations_0
+            .iter()
+            .any(|a| a.annotation_type == AnnotationType::Keyword));
+
+        let annotations_1 = highlighter.get_annotations(1).unwrap();
+        assert!(annotations_1
+            .iter()
+            .any(|a| a.annotation_type == AnnotationType::Number));
+
+        let annotations_2 = highlighter.get_annotations(2).unwrap();
+        assert!(annotations_2
+            .iter()
+            .any(|a| a.annotation_type == AnnotationType::Keyword));
     }
 }

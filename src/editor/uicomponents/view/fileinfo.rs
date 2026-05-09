@@ -81,6 +81,12 @@ mod tests {
     }
 
     #[test]
+    fn test_file_info_nix() {
+        let info = FileInfo::from("test.nix");
+        assert_eq!(info.get_file_type(), FileType::Nix);
+    }
+
+    #[test]
     fn test_file_info_text() {
         let info = FileInfo::from("test.txt");
         assert_eq!(info.get_file_type(), FileType::Text);

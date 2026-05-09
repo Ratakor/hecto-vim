@@ -6,5 +6,7 @@ pkgs.mkShell {
     cargo
     clang-analyzer
     rustfmt
+
+    nil
   ];
 }

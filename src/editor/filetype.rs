@@ -5,6 +5,7 @@ pub enum FileType {
     Rust,
     JavaScript,
     Zig,
+    Nix,
     #[default]
     Text,
 }
@@ -15,6 +16,7 @@ impl FileType {
             Self::Rust => "rust",
             Self::JavaScript => "javascript",
             Self::Zig => "zig",
+            Self::Nix => "nix",
             Self::Text => "text",
         }
     }
@@ -24,6 +26,7 @@ impl FileType {
             Self::Rust => Some(("rust-analyzer", vec![])),
             Self::JavaScript => Some(("typescript-language-server", vec!["--stdio"])),
             Self::Zig => Some(("zls", vec![])),
+            Self::Nix => Some(("nil", vec![])),
             Self::Text => None,
         }
     }
@@ -35,6 +38,8 @@ impl FileType {
             Self::JavaScript
         } else if extension.eq_ignore_ascii_case("zig") {
             Self::Zig
+        } else if extension.eq_ignore_ascii_case("nix") {
+            Self::Nix
         } else {
             Self::Text
         }
@@ -47,6 +52,7 @@ impl Display for FileType {
             Self::Rust => write!(formatter, "Rust"),
             Self::JavaScript => write!(formatter, "JavaScript"),
             Self::Zig => write!(formatter, "Zig"),
+            Self::Nix => write!(formatter, "Nix"),
             Self::Text => write!(formatter, "Text"),
         }
     }
