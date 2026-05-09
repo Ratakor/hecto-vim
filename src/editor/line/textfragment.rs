@@ -3,7 +3,7 @@ use crate::prelude::*;
 use super::super::AnnotationType;
 use super::GraphemeWidth;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TextFragment {
     pub grapheme: String,
     pub rendered_width: GraphemeWidth,

@@ -318,10 +318,14 @@ impl Editor {
                                     "File {} has changed on disk",
                                     status.file_name
                                 ));
-                            } else if view.reload().is_ok() {
-                                self.message_bar
-                                    .info(&format!("File {} reloaded from disk", status.file_name));
-                                handled = true;
+                            } else {
+                                if view.reload().unwrap_or(false) {
+                                    self.message_bar.info(&format!(
+                                        "File {} reloaded from disk",
+                                        status.file_name
+                                    ));
+                                    handled = true;
+                                }
                             }
                         }
                     }

@@ -15,7 +15,7 @@ use super::AnnotatedString;
 use super::Annotation;
 use super::AnnotationType;
 
-#[derive(Default, Clone)]
+#[derive(Default, Clone, PartialEq, Eq)]
 pub struct Line {
     fragments: Vec<TextFragment>,
     string: String,

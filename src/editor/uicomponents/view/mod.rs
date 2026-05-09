@@ -112,7 +112,7 @@ impl View {
         self.set_needs_redraw(true);
     }
 
-    pub fn reload(&mut self) -> Result<(), Error> {
+    pub fn reload(&mut self) -> Result<bool, Error> {
         if let Some(path) = self.buffer.get_file_info().get_path() {
             let content = std::fs::read_to_string(path)?;
             let new_lines: Vec<Line> = content.lines().map(Line::from).collect();
@@ -121,10 +121,13 @@ impl View {
             } else {
                 new_lines
             };
+            if self.buffer.matches_content(&new_lines) {
+                return Ok(false);
+            }
             self.buffer.replace_lines(new_lines, self.text_location);
             self.buffer.set_saved();
             self.set_needs_redraw(true);
-            Ok(())
+            Ok(true)
         } else {
             Err(Error::new(std::io::ErrorKind::Other, "No file path"))
         }

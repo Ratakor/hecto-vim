@@ -36,6 +36,9 @@ impl Buffer {
     pub fn can_redo(&self) -> bool {
         !self.redo_stack.is_empty()
     }
+    pub fn matches_content(&self, other_lines: &[Line]) -> bool {
+        self.lines == other_lines
+    }
     pub fn is_dirty(&self) -> bool {
         self.saved_state_index != Some(self.undo_stack.len())
     }
