@@ -567,9 +567,18 @@ impl Editor {
         debug_assert!(new_caret_pos.col <= self.terminal_size.width);
         debug_assert!(new_caret_pos.row <= self.terminal_size.height);
 
+        let _ = Terminal::set_cursor_style(self.get_cursor_style());
         let _ = Terminal::move_caret_to(new_caret_pos);
         let _ = Terminal::show_caret();
         let _ = Terminal::execute();
+    }
+
+    fn get_cursor_style(&self) -> SetCursorStyle {
+        match self.mode {
+            EditorMode::Insert => SetCursorStyle::SteadyBar,
+            EditorMode::Replace => SetCursorStyle::SteadyUnderScore,
+            EditorMode::Normal | EditorMode::Visual => SetCursorStyle::SteadyBlock,
+        }
     }
 
     fn refresh_status(&mut self) {
@@ -644,7 +653,6 @@ impl Editor {
                     EditorMode::Insert => {
                         if key_event.code == KeyCode::Esc {
                             self.mode = EditorMode::Normal;
-                            let _ = Terminal::set_cursor_style(SetCursorStyle::SteadyBlock);
                             if self.move_left_on_escape {
                                 self.process_command(Command::Move(Move::Left(1)));
                                 self.move_left_on_escape = false;
@@ -655,7 +663,6 @@ impl Editor {
                     EditorMode::Replace => {
                         if key_event.code == KeyCode::Esc {
                             self.mode = EditorMode::Normal;
-                            let _ = Terminal::set_cursor_style(SetCursorStyle::SteadyBlock);
                             return;
                         }
                         if let KeyCode::Char(c) = key_event.code {
@@ -714,7 +721,6 @@ impl Editor {
                 }
                 (KeyCode::Char('R'), KeyModifiers::SHIFT | KeyModifiers::NONE) => {
                     self.mode = EditorMode::Replace;
-                    let _ = Terminal::set_cursor_style(SetCursorStyle::SteadyUnderScore);
                 }
                 (KeyCode::Char('a'), KeyModifiers::NONE) => {
                     self.process_command(Command::Move(Move::Right(1)));
@@ -957,7 +963,6 @@ impl Editor {
 
     fn enter_insert_mode(&mut self, move_left_on_escape: bool) {
         self.mode = EditorMode::Insert;
-        let _ = Terminal::set_cursor_style(SetCursorStyle::SteadyBar);
         self.move_left_on_escape = move_left_on_escape;
     }
 
@@ -1039,7 +1044,6 @@ impl Editor {
                     self.views[self.current_view_idx].move_to_position(mouse_pos);
                     self.views[self.current_view_idx].clear_selection();
                     self.mode = EditorMode::Normal;
-                    let _ = Terminal::set_cursor_style(SetCursorStyle::SteadyBlock);
                 }
             }
             MouseEventKind::Down(MouseButton::Right) => {
