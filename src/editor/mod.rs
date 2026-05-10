@@ -79,6 +79,7 @@ HELP - ALL COMMANDS
 
 [Search & Commands]
   /          : Search
+  n / N      : Navigate forward / backward during search
   :          : Command mode
   :w [path]  : Save
   :q, :q!    : Quit, Force quit
@@ -772,6 +773,36 @@ impl Editor {
                 (KeyCode::Char('l'), KeyModifiers::NONE) => {
                     self.process_command(Command::Move(Move::Right(self.count.unwrap_or(1))));
                 }
+                (KeyCode::Char('n'), KeyModifiers::NONE) => {
+                    for _ in 0..self.count.unwrap_or(1) {
+                        if !self.views[self.current_view_idx].search_next() {
+                            if self.views[self.current_view_idx]
+                                .get_search_query()
+                                .is_none()
+                            {
+                                self.message_bar.error("No previous search pattern");
+                            } else {
+                                self.message_bar.error("Pattern not found");
+                            }
+                            break;
+                        }
+                    }
+                }
+                (KeyCode::Char('N'), KeyModifiers::SHIFT | KeyModifiers::NONE) => {
+                    for _ in 0..self.count.unwrap_or(1) {
+                        if !self.views[self.current_view_idx].search_prev() {
+                            if self.views[self.current_view_idx]
+                                .get_search_query()
+                                .is_none()
+                            {
+                                self.message_bar.error("No previous search pattern");
+                            } else {
+                                self.message_bar.error("Pattern not found");
+                            }
+                            break;
+                        }
+                    }
+                }
                 (KeyCode::Char('y'), KeyModifiers::NONE) => {
                     if let Some(text) = self.views[self.current_view_idx].get_selected_text() {
                         self.clipboard = text;
@@ -845,6 +876,7 @@ impl Editor {
                 }
                 (KeyCode::Esc, KeyModifiers::NONE) => {
                     self.views[self.current_view_idx].clear_selection();
+                    self.views[self.current_view_idx].clear_search_query();
                     if self.mode == EditorMode::Visual {
                         self.mode = EditorMode::Normal;
                     }

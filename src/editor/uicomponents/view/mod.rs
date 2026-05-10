@@ -1,4 +1,5 @@
 use arboard::Clipboard;
+use std::ops::Deref;
 use std::{cmp::min, io::Error};
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -27,6 +28,7 @@ pub struct View {
     selection_start: Option<Location>,
     scroll_offset: Position,
     search_info: Option<SearchInfo>,
+    last_search_query: Option<Line>,
     syntax_highlighter: Option<Box<dyn SyntaxHighlighter>>,
     syntax_enabled: bool,
     diagnostics: Vec<lsp_types::Diagnostic>,
@@ -42,6 +44,7 @@ impl Default for View {
             selection_start: None,
             scroll_offset: Position::default(),
             search_info: None,
+            last_search_query: None,
             syntax_highlighter: None,
             syntax_enabled: false,
             diagnostics: Vec::new(),
@@ -376,15 +379,26 @@ impl View {
             prev_scroll_offset: self.scroll_offset,
             query: None,
         });
+        self.set_needs_redraw(true);
     }
     pub fn exit_search(&mut self) {
+        if let Some(search_info) = &self.search_info {
+            if let Some(query) = &search_info.query {
+                self.last_search_query = Some(query.clone());
+            }
+        }
         self.search_info = None;
         self.set_needs_redraw(true);
     }
+    pub fn clear_search_query(&mut self) {
+        self.last_search_query = None;
+        self.set_needs_redraw(true);
+    }
     pub fn dismiss_search(&mut self) {
-        if let Some(search_info) = &self.search_info {
+        if let Some(search_info) = &mut self.search_info {
             self.text_location = search_info.prev_location;
             self.scroll_offset = search_info.prev_scroll_offset;
+            search_info.query = None;
             self.scroll_text_location_into_view(); // ensure the previous location is still visible even if the terminal has been resized during search.
         }
         self.exit_search();
@@ -400,20 +414,14 @@ impl View {
     // Attempts to get the current search query - for scenarios where the search query absolutely must be there.
     // Panics if not present in debug, or if search info is not present in debug
     // Returns None on release.
-    fn get_search_query(&self) -> Option<&Line> {
-        let query = self
-            .search_info
+    pub fn get_search_query(&self) -> Option<&Line> {
+        self.search_info
             .as_ref()
-            .and_then(|search_info| search_info.query.as_ref());
-
-        debug_assert!(
-            query.is_some(),
-            "Attempting to search with malformed searchinfo present"
-        );
-        query
+            .and_then(|search_info| search_info.query.as_ref())
+            .or(self.last_search_query.as_ref())
     }
 
-    fn search_in_direction(&mut self, from: Location, direction: SearchDirection) {
+    fn search_in_direction(&mut self, from: Location, direction: SearchDirection) -> bool {
         if let Some(location) = self.get_search_query().and_then(|query| {
             if query.is_empty() {
                 None
@@ -425,10 +433,13 @@ impl View {
         }) {
             self.text_location = location;
             self.center_text_location();
+            self.set_needs_redraw(true);
+            return true;
         }
         self.set_needs_redraw(true);
+        false
     }
-    pub fn search_next(&mut self) {
+    pub fn search_next(&mut self) -> bool {
         let step_right = self
             .get_search_query()
             .map_or(1, |query| min(query.grapheme_count(), 1));
@@ -438,10 +449,10 @@ impl View {
             grapheme_idx: self.text_location.grapheme_idx.saturating_add(step_right), //Start the new search behind the current match
             preferred_grapheme_idx: self.text_location.grapheme_idx.saturating_add(step_right),
         };
-        self.search_in_direction(location, SearchDirection::Forward);
+        self.search_in_direction(location, SearchDirection::Forward)
     }
-    pub fn search_prev(&mut self) {
-        self.search_in_direction(self.text_location, SearchDirection::Backward);
+    pub fn search_prev(&mut self) -> bool {
+        self.search_in_direction(self.text_location, SearchDirection::Backward)
     }
     // endregion
 
@@ -934,11 +945,8 @@ impl UIComponent for View {
         let usable_width = width.saturating_sub(gutter_width);
         let end_y = origin_row.saturating_add(height);
         let scroll_top = self.scroll_offset.row;
-
-        let query = self
-            .search_info
-            .as_ref()
-            .and_then(|search_info| search_info.query.as_deref());
+        let query = self.get_search_query().cloned();
+        let query_deref = query.as_ref().map(|line| line.deref());
         let selected_match = query.is_some().then_some(self.text_location);
         let selection = self
             .selection_start
@@ -949,7 +957,7 @@ impl UIComponent for View {
             None
         };
         let mut highlighter = Highlighter::new(
-            query,
+            query_deref,
             selected_match,
             selection,
             Some(self.diagnostics.clone()),

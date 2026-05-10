@@ -19,44 +19,40 @@ impl<'a> SearchResultHighlighter<'a> {
         }
     }
 
-    fn highlight_matched_words(&self, line: &Line, result: &mut Vec<Annotation>) {
+    fn highlight_matched_words(
+        &self,
+        line_idx: LineIdx,
+        line: &Line,
+        result: &mut Vec<Annotation>,
+    ) {
         if self.matched_word.is_empty() {
             return;
         }
         line.find_all(self.matched_word, 0..line.len())
             .iter()
-            .for_each(|(start, _)| {
+            .for_each(|(byte_idx, grapheme_idx)| {
+                let is_selected = self.selected_match.is_some_and(|loc| {
+                    loc.line_idx == line_idx && loc.grapheme_idx == *grapheme_idx
+                });
+                let annotation_type = if is_selected {
+                    AnnotationType::SelectedMatch
+                } else {
+                    AnnotationType::Match
+                };
+
                 result.push(Annotation {
-                    annotation_type: AnnotationType::Match,
-                    start: *start,
-                    end: start.saturating_add(self.matched_word.len()),
+                    annotation_type,
+                    start: *byte_idx,
+                    end: byte_idx.saturating_add(self.matched_word.len()),
                 });
             });
-    }
-    fn highlight_selected_match(&self, result: &mut Vec<Annotation>) {
-        if let Some(selected_match) = self.selected_match {
-            if self.matched_word.is_empty() {
-                return;
-            }
-            let start = selected_match.grapheme_idx;
-            result.push(Annotation {
-                annotation_type: AnnotationType::SelectedMatch,
-                start,
-                end: start.saturating_add(self.matched_word.len()),
-            });
-        }
     }
 }
 
 impl SyntaxHighlighter for SearchResultHighlighter<'_> {
     fn highlight(&mut self, idx: LineIdx, line: &Line) {
         let mut result = Vec::new();
-        self.highlight_matched_words(line, &mut result);
-        if let Some(selected_match) = self.selected_match {
-            if selected_match.line_idx == idx {
-                self.highlight_selected_match(&mut result);
-            }
-        }
+        self.highlight_matched_words(idx, line, &mut result);
         self.highlights.insert(idx, result);
     }
     fn get_annotations(&self, idx: LineIdx) -> Option<&Vec<Annotation>> {
