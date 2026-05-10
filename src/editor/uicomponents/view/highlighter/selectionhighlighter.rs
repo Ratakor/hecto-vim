@@ -36,11 +36,7 @@ impl SelectionHighlighter {
         };
 
         let start_byte = line.grapheme_idx_to_byte_idx(start_grapheme);
-        let end_byte = if end_grapheme >= line.grapheme_count() {
-            line.len().saturating_add(1)
-        } else {
-            line.grapheme_idx_to_byte_idx(end_grapheme)
-        };
+        let end_byte = line.grapheme_idx_to_byte_idx(end_grapheme.saturating_add(1));
 
         if start_byte >= end_byte {
             return None;

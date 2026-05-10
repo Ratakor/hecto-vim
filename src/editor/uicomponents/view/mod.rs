@@ -534,6 +534,9 @@ impl View {
             Move::FirstNonWhitespace => self.move_to_first_non_whitespace(),
             Move::EndOfLine => self.move_to_end_of_line(),
             Move::AfterEndOfLine => self.move_to_after_end_of_line(),
+            Move::WordForward => self.move_word_forward(),
+            Move::WordBackward => self.move_word_backward(),
+            Move::WordEnd => self.move_word_end(),
             Move::BufferStart => self.move_to_buffer_start(),
             Move::BufferEnd => self.move_to_buffer_end(),
             Move::GoToLine(line_idx) => self.move_to_line(line_idx),
@@ -804,6 +807,17 @@ impl View {
         next
     }
 
+    fn prev_location(&self, location: Location) -> Location {
+        let mut prev = location;
+        if location.grapheme_idx > 0 {
+            prev.grapheme_idx -= 1;
+        } else if location.line_idx > 0 {
+            prev.line_idx -= 1;
+            prev.grapheme_idx = self.buffer.grapheme_count(prev.line_idx);
+        }
+        prev
+    }
+
     // endregion
 
     // region: text location movement
@@ -904,6 +918,169 @@ impl View {
         self.text_location.line_idx = line_idx.saturating_sub(1);
         self.snap_to_valid_line();
         self.move_to_start_of_line();
+    }
+
+    fn move_word_forward(&mut self) {
+        let mut loc = self.text_location;
+
+        // Move at least once to avoid getting stuck if already at a target position
+        let next = self.next_location(loc);
+        if next == loc {
+            return;
+        }
+        loc = next;
+
+        loop {
+            let next = self.next_location(loc);
+            if next == loc {
+                // End of buffer
+                self.text_location = loc;
+                return;
+            }
+
+            let next_is_word = self.is_word_char(next);
+            let next_is_punc = self.is_punc_char(next);
+
+            if next_is_word || next_is_punc {
+                let curr_is_word = self.is_word_char(loc);
+                let curr_is_punc = self.is_punc_char(loc);
+
+                // If next is the start of a new group (word or punctuation),
+                // then current (loc) is the character before it.
+                if next_is_word && !curr_is_word {
+                    self.text_location = loc;
+                    return;
+                }
+                if next_is_punc && !curr_is_punc {
+                    self.text_location = loc;
+                    return;
+                }
+            }
+            loc = next;
+        }
+    }
+
+    fn move_word_backward(&mut self) {
+        let mut loc = self.text_location;
+
+        // Move at least once to avoid getting stuck
+        let prev = self.prev_location(loc);
+        if prev == loc {
+            return;
+        }
+        loc = prev;
+
+        loop {
+            let prev = self.prev_location(loc);
+            if prev == loc {
+                // Start of buffer
+                self.text_location = loc;
+                return;
+            }
+
+            let curr_is_word = self.is_word_char(loc);
+            let curr_is_punc = self.is_punc_char(loc);
+
+            if curr_is_word || curr_is_punc {
+                let prev_is_word = self.is_word_char(prev);
+                let prev_is_punc = self.is_punc_char(prev);
+
+                // If curr is the start of a group (word or punctuation) going backward,
+                // we land ON it.
+                if curr_is_word && !prev_is_word {
+                    self.text_location = loc;
+                    return;
+                }
+                if curr_is_punc && !prev_is_punc {
+                    self.text_location = loc;
+                    return;
+                }
+            }
+            loc = prev;
+        }
+    }
+
+    pub fn is_word_start(&self, loc: Location) -> bool {
+        self.is_word_char(loc) && !self.is_word_char(self.prev_location(loc))
+    }
+    pub fn is_word_end(&self, loc: Location) -> bool {
+        self.is_word_char(loc) && !self.is_word_char(self.next_location(loc))
+    }
+    pub fn is_punc_start(&self, loc: Location) -> bool {
+        self.is_punc_char(loc) && !self.is_punc_char(self.prev_location(loc))
+    }
+    pub fn is_punc_end(&self, loc: Location) -> bool {
+        self.is_punc_char(loc) && !self.is_punc_char(self.next_location(loc))
+    }
+
+    fn move_word_end(&mut self) {
+        loop {
+            let line = if let Some(line) = self.buffer.get_line(self.text_location.line_idx) {
+                line
+            } else {
+                return;
+            };
+
+            let grapheme_count = line.grapheme_count();
+            let start_idx = if self.text_location.grapheme_idx < grapheme_count {
+                self.text_location.grapheme_idx.saturating_add(1)
+            } else {
+                grapheme_count
+            };
+
+            for i in start_idx..grapheme_count {
+                let loc = Location {
+                    line_idx: self.text_location.line_idx,
+                    grapheme_idx: i,
+                    preferred_grapheme_idx: i,
+                };
+                if self.is_word_char(loc) {
+                    // Found a word char, now find its end
+                    for j in i..grapheme_count {
+                        let end_loc = Location {
+                            line_idx: self.text_location.line_idx,
+                            grapheme_idx: j,
+                            preferred_grapheme_idx: j,
+                        };
+                        let next_loc = Location {
+                            line_idx: self.text_location.line_idx,
+                            grapheme_idx: j.saturating_add(1),
+                            preferred_grapheme_idx: j.saturating_add(1),
+                        };
+                        if !self.is_word_char(next_loc) {
+                            self.text_location = end_loc;
+                            return;
+                        }
+                    }
+                }
+            }
+
+            if self.text_location.line_idx.saturating_add(1) < self.buffer.height() {
+                self.text_location.line_idx += 1;
+                self.text_location.grapheme_idx = 0;
+            } else {
+                self.move_to_end_of_line();
+                return;
+            }
+        }
+    }
+
+    fn is_word_char(&self, loc: Location) -> bool {
+        if let Some(line) = self.buffer.get_line(loc.line_idx) {
+            if let Some(g) = line.get_substring(loc.grapheme_idx..loc.grapheme_idx.saturating_add(1)).chars().next() {
+                return g.is_alphanumeric() || g == '_';
+            }
+        }
+        false
+    }
+
+    fn is_punc_char(&self, loc: Location) -> bool {
+        if let Some(line) = self.buffer.get_line(loc.line_idx) {
+            if let Some(g) = line.get_substring(loc.grapheme_idx..loc.grapheme_idx.saturating_add(1)).chars().next() {
+                return !g.is_alphanumeric() && !g.is_whitespace() && g != '_';
+            }
+        }
+        false
     }
 
     // Ensures self.location.grapheme_idx points to a valid grapheme index by snapping it to the left most grapheme if appropriate.

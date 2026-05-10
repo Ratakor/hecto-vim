@@ -773,6 +773,48 @@ impl Editor {
                 (KeyCode::Char('l'), KeyModifiers::NONE) => {
                     self.process_command(Command::Move(Move::Right(self.count.unwrap_or(1))));
                 }
+                (KeyCode::Char('w'), KeyModifiers::NONE) => {
+                    let count = self.count.unwrap_or(1);
+                    for i in 0..count {
+                        if self.mode == EditorMode::Normal && i == count.saturating_sub(1) {
+                            let view = &self.views[self.current_view_idx];
+                            let loc = view.text_location();
+                            if view.is_word_end(loc) || view.is_punc_end(loc) {
+                                self.views[self.current_view_idx].handle_move_command(Move::Right(1));
+                            }
+                            self.views[self.current_view_idx].start_selection();
+                        }
+                        self.views[self.current_view_idx].handle_move_command(Move::WordForward);
+                    }
+                }
+                (KeyCode::Char('b'), KeyModifiers::NONE) => {
+                    let count = self.count.unwrap_or(1);
+                    for i in 0..count {
+                        if self.mode == EditorMode::Normal && i == count.saturating_sub(1) {
+                            let view = &self.views[self.current_view_idx];
+                            let loc = view.text_location();
+                            if view.is_word_start(loc) || view.is_punc_start(loc) {
+                                self.views[self.current_view_idx].handle_move_command(Move::Left(1));
+                            }
+                            self.views[self.current_view_idx].start_selection();
+                        }
+                        self.views[self.current_view_idx].handle_move_command(Move::WordBackward);
+                    }
+                }
+                (KeyCode::Char('e'), KeyModifiers::NONE) => {
+                    let count = self.count.unwrap_or(1);
+                    for i in 0..count {
+                        if self.mode == EditorMode::Normal && i == count.saturating_sub(1) {
+                            let view = &self.views[self.current_view_idx];
+                            let loc = view.text_location();
+                            if view.is_word_end(loc) || view.is_punc_end(loc) {
+                                self.views[self.current_view_idx].handle_move_command(Move::Right(1));
+                            }
+                            self.views[self.current_view_idx].start_selection();
+                        }
+                        self.views[self.current_view_idx].handle_move_command(Move::WordEnd);
+                    }
+                }
                 (KeyCode::Char('n'), KeyModifiers::NONE) => {
                     for _ in 0..self.count.unwrap_or(1) {
                         if !self.views[self.current_view_idx].search_next() {
