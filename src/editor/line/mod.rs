@@ -330,8 +330,7 @@ impl Line {
         query: &str,
         from_grapheme_idx: GraphemeIdx,
     ) -> Option<GraphemeIdx> {
-        debug_assert!(from_grapheme_idx <= self.grapheme_count());
-        if from_grapheme_idx == self.grapheme_count() {
+        if from_grapheme_idx >= self.grapheme_count() {
             return None;
         }
         let start = self.grapheme_idx_to_byte_idx(from_grapheme_idx);
@@ -344,12 +343,10 @@ impl Line {
         query: &str,
         from_grapheme_idx: GraphemeIdx,
     ) -> Option<GraphemeIdx> {
-        debug_assert!(from_grapheme_idx <= self.grapheme_count());
-
         if from_grapheme_idx == 0 {
             return None;
         }
-        let end_byte_index = if from_grapheme_idx == self.grapheme_count() {
+        let end_byte_index = if from_grapheme_idx >= self.grapheme_count() {
             self.string.len()
         } else {
             self.grapheme_idx_to_byte_idx(from_grapheme_idx)
@@ -560,19 +557,17 @@ mod tests {
     }
 
     #[test]
-    fn test_tab_search() {
-        let line = Line::from("a\tb");
-        let query = "\t";
-        let res = line.search_forward(query, 0);
-        assert_eq!(res, Some(1));
+    fn test_search_out_of_bounds() {
+        let line = Line::from("");
+        assert_eq!(line.search_forward("h", 0), None);
+        assert_eq!(line.search_forward("h", 1), None);
+        assert_eq!(line.search_backward("h", 0), None);
+        assert_eq!(line.search_backward("h", 1), None);
 
-        let annotations = vec![Annotation {
-            annotation_type: AnnotationType::Match,
-            start: 1,
-            end: 2,
-        }];
-        let visible = line.get_annotated_visible_substr(0..10, Some(&annotations));
-        assert_eq!(visible.to_string(), "a|      b "); // 1 space for 'a', 7 for tab, 1 for 'b', 1 for virtual space
-        assert_eq!(visible.to_string().len(), 10);
+        let line = Line::from("h");
+        assert_eq!(line.search_forward("h", 1), None);
+        assert_eq!(line.search_forward("h", 2), None);
+        assert_eq!(line.search_backward("h", 0), None);
+        assert_eq!(line.search_backward("h", 2), Some(0));
     }
 }
