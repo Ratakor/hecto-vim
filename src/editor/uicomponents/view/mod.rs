@@ -14,7 +14,7 @@ use buffer::Buffer;
 mod searchdirection;
 use searchdirection::SearchDirection;
 mod highlighter;
-use highlighter::{create_syntax_highlighter, Highlighter, SyntaxHighlighter};
+use highlighter::{Highlighter, SyntaxHighlighter, create_syntax_highlighter};
 mod fileinfo;
 use fileinfo::FileInfo;
 mod searchinfo;
@@ -567,7 +567,8 @@ impl View {
         self.text_location.line_idx = pos.line as usize;
         self.snap_to_valid_line();
         if let Some(line) = self.buffer.get_line(self.text_location.line_idx) {
-            self.text_location.grapheme_idx = line.utf16_code_unit_to_grapheme_idx(pos.character as usize);
+            self.text_location.grapheme_idx =
+                line.utf16_code_unit_to_grapheme_idx(pos.character as usize);
         } else {
             self.text_location.grapheme_idx = 0;
         }
@@ -603,10 +604,66 @@ impl View {
     // endregion
     // region: Text editing
     fn insert_newline(&mut self) {
-        let indent_len = self.buffer.insert_enter(self.text_location);
-        self.text_location.line_idx = self.text_location.line_idx.saturating_add(1);
-        self.text_location.grapheme_idx = indent_len;
-        self.text_location.preferred_grapheme_idx = indent_len;
+        let mut is_between_braces = false;
+        if let Some(line) = self.buffer.get_line(self.text_location.line_idx) {
+            if self.text_location.grapheme_idx > 0
+                && self.text_location.grapheme_idx < line.grapheme_count()
+            {
+                let char_before = line.get_substring(
+                    self.text_location.grapheme_idx - 1..self.text_location.grapheme_idx,
+                );
+                let char_after = line.get_substring(
+                    self.text_location.grapheme_idx..self.text_location.grapheme_idx + 1,
+                );
+                if (char_before == "{" && char_after == "}")
+                    || (char_before == "[" && char_after == "]")
+                    || (char_before == "(" && char_after == ")")
+                {
+                    is_between_braces = true;
+                }
+            }
+        }
+
+        if is_between_braces {
+            let mut base_indent = String::new();
+            if let Some(line) = self.buffer.get_line(self.text_location.line_idx) {
+                let non_whitespace = line.first_non_whitespace_grapheme();
+                let indent_end = std::cmp::min(non_whitespace, self.text_location.grapheme_idx);
+                base_indent = line.get_substring(0..indent_end);
+            }
+
+            self.buffer.insert_string("\n", self.text_location);
+
+            let mut middle_indent = base_indent.clone();
+            let indent_size = self.buffer.indent_size();
+            for _ in 0..indent_size {
+                middle_indent.push(' ');
+            }
+
+            let middle_line_idx = self.text_location.line_idx.saturating_add(1);
+            let mut at = Location {
+                line_idx: middle_line_idx,
+                grapheme_idx: 0,
+                preferred_grapheme_idx: 0,
+            };
+            self.buffer.insert_string(&middle_indent, at);
+            at.grapheme_idx = middle_indent.len();
+            self.buffer.insert_string("\n", at);
+
+            let last_line_idx = middle_line_idx.saturating_add(1);
+            at.line_idx = last_line_idx;
+            at.grapheme_idx = 0;
+            self.buffer.insert_string(&base_indent, at);
+
+            self.text_location.line_idx = middle_line_idx;
+            self.text_location.grapheme_idx = middle_indent.len();
+            self.text_location.preferred_grapheme_idx = middle_indent.len();
+        } else {
+            let indent_len = self.buffer.insert_enter(self.text_location);
+            self.text_location.line_idx = self.text_location.line_idx.saturating_add(1);
+            self.text_location.grapheme_idx = indent_len;
+            self.text_location.preferred_grapheme_idx = indent_len;
+        }
         self.scroll_text_location_into_view();
         self.set_needs_redraw(true);
     }
@@ -635,7 +692,8 @@ impl View {
         self.set_needs_redraw(true);
     }
     pub fn handle_replace_mode_char(&mut self, character: char) {
-        if self.text_location.grapheme_idx < self.buffer.grapheme_count(self.text_location.line_idx) {
+        if self.text_location.grapheme_idx < self.buffer.grapheme_count(self.text_location.line_idx)
+        {
             self.buffer.replace_char(character, self.text_location);
         } else {
             self.buffer.insert_char(character, self.text_location);
@@ -1066,19 +1124,25 @@ impl View {
     }
 
     fn is_word_char(&self, loc: Location) -> bool {
-        if let Some(line) = self.buffer.get_line(loc.line_idx) {
-            if let Some(g) = line.get_substring(loc.grapheme_idx..loc.grapheme_idx.saturating_add(1)).chars().next() {
-                return g.is_alphanumeric() || g == '_';
-            }
+        if let Some(line) = self.buffer.get_line(loc.line_idx)
+            && let Some(g) = line
+                .get_substring(loc.grapheme_idx..loc.grapheme_idx.saturating_add(1))
+                .chars()
+                .next()
+        {
+            return g.is_alphanumeric() || g == '_';
         }
         false
     }
 
     fn is_punc_char(&self, loc: Location) -> bool {
-        if let Some(line) = self.buffer.get_line(loc.line_idx) {
-            if let Some(g) = line.get_substring(loc.grapheme_idx..loc.grapheme_idx.saturating_add(1)).chars().next() {
-                return !g.is_alphanumeric() && !g.is_whitespace() && g != '_';
-            }
+        if let Some(line) = self.buffer.get_line(loc.line_idx)
+            && let Some(g) = line
+                .get_substring(loc.grapheme_idx..loc.grapheme_idx.saturating_add(1))
+                .chars()
+                .next()
+        {
+            return !g.is_alphanumeric() && !g.is_whitespace() && g != '_';
         }
         false
     }
@@ -1200,9 +1264,7 @@ impl UIComponent for View {
                         let msg = d.message.lines().next().unwrap_or("");
                         let annotation_type = match d.severity {
                             Some(lsp_types::DiagnosticSeverity::ERROR) => AnnotationType::Error,
-                            Some(lsp_types::DiagnosticSeverity::WARNING) => {
-                                AnnotationType::Warning
-                            }
+                            Some(lsp_types::DiagnosticSeverity::WARNING) => AnnotationType::Warning,
                             Some(lsp_types::DiagnosticSeverity::INFORMATION) => {
                                 AnnotationType::Information
                             }
@@ -1222,5 +1284,33 @@ impl UIComponent for View {
             }
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_insert_newline_between_braces() {
+        let mut view = View {
+            buffer: Buffer::new_with_content("{}", "test.rs"),
+            text_location: Location {
+                line_idx: 0,
+                grapheme_idx: 1,
+                preferred_grapheme_idx: 1,
+            },
+            ..View::default()
+        };
+        view.insert_newline();
+
+        assert_eq!(view.buffer.height(), 3);
+        assert_eq!(view.buffer.get_line(0).unwrap().to_string(), "{");
+        assert_eq!(view.buffer.get_line(1).unwrap().to_string(), "    ");
+        assert_eq!(view.buffer.get_line(2).unwrap().to_string(), "}");
+
+        // Cursor should be on the middle line, indented
+        assert_eq!(view.text_location.line_idx, 1);
+        assert_eq!(view.text_location.grapheme_idx, 4);
     }
 }

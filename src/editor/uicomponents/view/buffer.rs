@@ -566,6 +566,26 @@ mod tests {
     }
 
     #[test]
+    fn test_insert_enter_deindent_brace() {
+        let mut buffer = Buffer {
+            lines: vec![Line::from("    foo();}")],
+            file_info: FileInfo::default(),
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
+            saved_state_index: Some(0),
+        };
+        let at = Location {
+            line_idx: 0,
+            grapheme_idx: 10, // before }
+            preferred_grapheme_idx: 10,
+        };
+        buffer.insert_enter(at);
+        assert_eq!(buffer.lines.len(), 2);
+        assert_eq!(buffer.lines[0].to_string(), "    foo();");
+        assert_eq!(buffer.lines[1].to_string(), "    }"); // Buffer now keeps indentation
+    }
+
+    #[test]
     fn test_indent_size_detection() {
         let buffer = Buffer {
             lines: vec![Line::from("  two spaces")],
