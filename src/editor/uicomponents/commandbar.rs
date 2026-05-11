@@ -2,7 +2,7 @@ use std::{cmp::min, io::Error};
 
 use crate::prelude::*;
 
-use super::super::{command::Edit, Line, Terminal};
+use super::super::{Line, Terminal, command::Edit};
 use super::UIComponent;
 
 #[derive(Default)]

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use super::{syntaxhighlighter::SyntaxHighlighter, Annotation, AnnotationType, Line};
+use super::{Annotation, AnnotationType, Line, syntaxhighlighter::SyntaxHighlighter};
 use crate::prelude::*;
 
 #[derive(Default)]

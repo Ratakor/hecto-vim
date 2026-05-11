@@ -175,7 +175,7 @@ mod tests {
         s.add_annotation(AnnotationType::Selection, 0, 1);
         // Replace space (1 byte) with "·" (2 bytes)
         s.replace(0, 1, "·");
-        
+
         // This should not panic
         let parts: Vec<AnnotatedStringPart> = s.into_iter().collect();
         assert_eq!(parts.len(), 1);

@@ -8,11 +8,11 @@ use crossterm::style::{
     Print, ResetColor, SetBackgroundColor, SetForegroundColor,
 };
 use crossterm::terminal::{
-    disable_raw_mode, enable_raw_mode, size, Clear, ClearType, DisableLineWrap, EnableLineWrap,
-    EnterAlternateScreen, LeaveAlternateScreen, SetTitle,
+    Clear, ClearType, DisableLineWrap, EnableLineWrap, EnterAlternateScreen, LeaveAlternateScreen,
+    SetTitle, disable_raw_mode, enable_raw_mode, size,
 };
-use crossterm::{queue, Command};
-use std::io::{stdout, Error, Write};
+use crossterm::{Command, queue};
+use std::io::{Error, Write, stdout};
 
 use super::AnnotatedString;
 use super::AnnotationType;
@@ -146,7 +146,7 @@ impl Terminal {
                 // Use background color as foreground for the message
                 Self::set_foreground_color(foreground)?;
             }
-            Self::print(&format!("  {}", message))?;
+            Self::print(&format!("  {message}"))?;
             Self::reset_color()?;
         }
         Ok(())

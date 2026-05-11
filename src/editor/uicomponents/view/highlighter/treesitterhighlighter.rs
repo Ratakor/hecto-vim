@@ -195,20 +195,28 @@ mod tests {
         highlighter.update(source);
 
         let annotations_0 = highlighter.get_annotations(0).unwrap();
-        assert!(annotations_0
-            .iter()
-            .any(|a| a.annotation_type == AnnotationType::Keyword));
-        assert!(annotations_0
-            .iter()
-            .any(|a| a.annotation_type == AnnotationType::Function));
+        assert!(
+            annotations_0
+                .iter()
+                .any(|a| a.annotation_type == AnnotationType::Keyword)
+        );
+        assert!(
+            annotations_0
+                .iter()
+                .any(|a| a.annotation_type == AnnotationType::Function)
+        );
 
         let annotations_1 = highlighter.get_annotations(1).unwrap();
-        assert!(annotations_1
-            .iter()
-            .any(|a| a.annotation_type == AnnotationType::Keyword));
-        assert!(annotations_1
-            .iter()
-            .any(|a| a.annotation_type == AnnotationType::Constant));
+        assert!(
+            annotations_1
+                .iter()
+                .any(|a| a.annotation_type == AnnotationType::Keyword)
+        );
+        assert!(
+            annotations_1
+                .iter()
+                .any(|a| a.annotation_type == AnnotationType::Constant)
+        );
     }
 
     #[test]
@@ -218,20 +226,28 @@ mod tests {
         highlighter.update(source);
 
         let annotations_0 = highlighter.get_annotations(0).unwrap();
-        assert!(annotations_0
-            .iter()
-            .any(|a| a.annotation_type == AnnotationType::Keyword));
-        assert!(annotations_0
-            .iter()
-            .any(|a| a.annotation_type == AnnotationType::Function));
+        assert!(
+            annotations_0
+                .iter()
+                .any(|a| a.annotation_type == AnnotationType::Keyword)
+        );
+        assert!(
+            annotations_0
+                .iter()
+                .any(|a| a.annotation_type == AnnotationType::Function)
+        );
 
         let annotations_1 = highlighter.get_annotations(1).unwrap();
-        assert!(annotations_1
-            .iter()
-            .any(|a| a.annotation_type == AnnotationType::Keyword));
-        assert!(annotations_1
-            .iter()
-            .any(|a| a.annotation_type == AnnotationType::Number));
+        assert!(
+            annotations_1
+                .iter()
+                .any(|a| a.annotation_type == AnnotationType::Keyword)
+        );
+        assert!(
+            annotations_1
+                .iter()
+                .any(|a| a.annotation_type == AnnotationType::Number)
+        );
     }
 
     #[test]
@@ -241,20 +257,28 @@ mod tests {
         highlighter.update(source);
 
         let annotations_0 = highlighter.get_annotations(0).unwrap();
-        assert!(annotations_0
-            .iter()
-            .any(|a| a.annotation_type == AnnotationType::Keyword));
-        assert!(annotations_0
-            .iter()
-            .any(|a| a.annotation_type == AnnotationType::Function));
+        assert!(
+            annotations_0
+                .iter()
+                .any(|a| a.annotation_type == AnnotationType::Keyword)
+        );
+        assert!(
+            annotations_0
+                .iter()
+                .any(|a| a.annotation_type == AnnotationType::Function)
+        );
 
         let annotations_1 = highlighter.get_annotations(1).unwrap();
-        assert!(annotations_1
-            .iter()
-            .any(|a| a.annotation_type == AnnotationType::Keyword));
-        assert!(annotations_1
-            .iter()
-            .any(|a| a.annotation_type == AnnotationType::Number));
+        assert!(
+            annotations_1
+                .iter()
+                .any(|a| a.annotation_type == AnnotationType::Keyword)
+        );
+        assert!(
+            annotations_1
+                .iter()
+                .any(|a| a.annotation_type == AnnotationType::Number)
+        );
     }
 
     #[test]
@@ -264,18 +288,24 @@ mod tests {
         highlighter.update(source);
 
         let annotations_0 = highlighter.get_annotations(0).unwrap();
-        assert!(annotations_0
-            .iter()
-            .any(|a| a.annotation_type == AnnotationType::Keyword));
+        assert!(
+            annotations_0
+                .iter()
+                .any(|a| a.annotation_type == AnnotationType::Keyword)
+        );
 
         let annotations_1 = highlighter.get_annotations(1).unwrap();
-        assert!(annotations_1
-            .iter()
-            .any(|a| a.annotation_type == AnnotationType::Number));
+        assert!(
+            annotations_1
+                .iter()
+                .any(|a| a.annotation_type == AnnotationType::Number)
+        );
 
         let annotations_2 = highlighter.get_annotations(2).unwrap();
-        assert!(annotations_2
-            .iter()
-            .any(|a| a.annotation_type == AnnotationType::Keyword));
+        assert!(
+            annotations_2
+                .iter()
+                .any(|a| a.annotation_type == AnnotationType::Keyword)
+        );
     }
 }

@@ -76,7 +76,7 @@ impl UIComponent for MessageBar {
             || self
                 .current_message
                 .as_ref()
-                .map_or(false, |m| !self.cleared_after_expiry && m.is_expired())
+                .is_some_and(|m| !self.cleared_after_expiry && m.is_expired())
     }
 
     fn set_size(&mut self, size: Size) {
@@ -94,7 +94,7 @@ impl UIComponent for MessageBar {
         };
 
         let target_pos = self.size.width.saturating_sub(15);
-        let mut row = format!("{:<width$}", message_text, width = target_pos);
+        let mut row = format!("{message_text:<target_pos$}");
         if row.len() > target_pos {
             row.truncate(target_pos.saturating_sub(1));
             row.push(' ');

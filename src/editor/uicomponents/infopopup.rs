@@ -15,12 +15,12 @@ impl InfoPopup {
     pub fn new(mut position: Position, terminal_size: Size, text: &str) -> Self {
         let mut lines = Vec::new();
         let max_width = terminal_size.width.saturating_mul(3).saturating_div(4);
-        
+
         for line in text.lines() {
             let mut current_line = String::new();
             for word in line.split_whitespace() {
                 if current_line.len() + word.len() + 1 > max_width {
-                    lines.push(format!(" {} ", current_line));
+                    lines.push(format!(" {current_line} "));
                     current_line = word.to_string();
                 } else {
                     if !current_line.is_empty() {
@@ -30,19 +30,19 @@ impl InfoPopup {
                 }
             }
             if !current_line.is_empty() {
-                lines.push(format!(" {} ", current_line));
+                lines.push(format!(" {current_line} "));
             }
         }
 
-        let width = lines.iter().map(|l| l.len()).max().unwrap_or(0);
+        let width = lines.iter().map(std::string::String::len).max().unwrap_or(0);
         let height = lines.len();
 
         let padded_lines: Vec<String> = lines
             .into_iter()
-            .map(|l| format!("{:<width$}", l, width = width))
+            .map(|l| format!("{l:<width$}"))
             .collect();
 
-        let size = Size { width, height };
+        let size = Size { height, width };
 
         // Adjust position if it would go out of bounds
         // Main editor area ends at terminal_size.height - 2 (for status and message bars)

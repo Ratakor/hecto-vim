@@ -189,7 +189,7 @@ impl Editor {
         let size = Terminal::size().unwrap_or_default();
         let (tx, rx) = mpsc_channel();
         let watcher = RecommendedWatcher::new(tx, Config::default())
-            .map_err(|e| Error::new(std::io::ErrorKind::Other, e))?;
+            .map_err(Error::other)?;
 
         let mut editor = Self {
             should_quit: false,
@@ -214,7 +214,7 @@ impl Editor {
             move_left_on_escape: false,
             clipboard: String::new(),
             system_clipboard: Clipboard::new()
-                .map_err(|e| Error::new(std::io::ErrorKind::Other, e))?,
+                .map_err(Error::other)?,
             command_buffer: Vec::new(),
             count: None,
             context_menu: None,
@@ -284,12 +284,11 @@ impl Editor {
             }
 
             // Wait for the next event if none were pending
-            if !event_processed && poll(Duration::from_millis(100)).unwrap_or(false) {
-                if let Ok(event) = read() {
+            if !event_processed && poll(Duration::from_millis(100)).unwrap_or(false)
+                && let Ok(event) = read() {
                     self.evaluate_event(event);
                     event_processed = true;
                 }
-            }
 
             if self.handle_file_events() {
                 event_processed = true;
@@ -321,14 +320,12 @@ impl Editor {
                                     "File {} has changed on disk",
                                     status.file_name
                                 ));
-                            } else {
-                                if view.reload().unwrap_or(false) {
-                                    self.message_bar.info(&format!(
-                                        "File {} reloaded from disk",
-                                        status.file_name
-                                    ));
-                                    handled = true;
-                                }
+                            } else if view.reload().unwrap_or(false) {
+                                self.message_bar.info(&format!(
+                                    "File {} reloaded from disk",
+                                    status.file_name
+                                ));
+                                handled = true;
                             }
                         }
                     }
@@ -339,13 +336,12 @@ impl Editor {
     }
 
     fn watch_view(&mut self, view_idx: usize) -> Result<(), Error> {
-        if let Some(path) = self.views[view_idx].get_path() {
-            if let Ok(abs_path) = std::fs::canonicalize(path) {
+        if let Some(path) = self.views[view_idx].get_path()
+            && let Ok(abs_path) = std::fs::canonicalize(path) {
                 self.file_watcher
                     .watch(&abs_path, RecursiveMode::NonRecursive)
-                    .map_err(|e| Error::new(std::io::ErrorKind::Other, e))?;
+                    .map_err(Error::other)?;
             }
-        }
         Ok(())
     }
 
@@ -379,9 +375,9 @@ impl Editor {
     }
 
     fn handle_lsp_response(&mut self, _file_type: FileType, response: lsp::JsonRpcResponse) {
-        if let Some(id) = response.id {
-            if let Some((view_idx, req_type)) = self.pending_requests.remove(&id) {
-                if let Some(result) = response.result {
+        if let Some(id) = response.id
+            && let Some((view_idx, req_type)) = self.pending_requests.remove(&id)
+                && let Some(result) = response.result {
                     match req_type {
                         LspRequestType::Hover => {
                             if let Ok(hover) = serde_json::from_value::<lsp_types::Hover>(result) {
@@ -400,10 +396,10 @@ impl Editor {
                                 let target = match goto {
                                     lsp_types::GotoDefinitionResponse::Scalar(loc) => Some(loc),
                                     lsp_types::GotoDefinitionResponse::Array(vec) => {
-                                        vec.get(0).cloned()
+                                        vec.first().cloned()
                                     }
                                     lsp_types::GotoDefinitionResponse::Link(vec) => {
-                                        vec.get(0).map(|link| lsp_types::Location {
+                                        vec.first().map(|link| lsp_types::Location {
                                             uri: link.target_uri.clone(),
                                             range: link.target_range,
                                         })
@@ -425,8 +421,6 @@ impl Editor {
                         }
                     }
                 }
-            }
-        }
     }
 
     fn open_file_from_uri(&mut self, uri: &str, pos: lsp_types::Position) {
@@ -606,7 +600,7 @@ impl Editor {
         let mut command_buffer = self
             .count
             .map(|c| c.to_string())
-            .unwrap_or_else(String::new);
+            .unwrap_or_default();
         command_buffer.push_str(
             &self
                 .command_buffer
@@ -706,8 +700,8 @@ impl Editor {
         let first_mod = first_key.modifiers;
 
         if self.command_buffer.len() == 1 {
-            if let (KeyCode::Char(c), KeyModifiers::NONE) = (first_code, first_mod) {
-                if c.is_ascii_digit() {
+            if let (KeyCode::Char(c), KeyModifiers::NONE) = (first_code, first_mod)
+                && c.is_ascii_digit() {
                     let digit = c.to_digit(10).unwrap_or(0) as usize;
                     self.count = Some(
                         self.count
@@ -717,7 +711,6 @@ impl Editor {
                     );
                     return true;
                 }
-            }
 
             match (first_code, first_mod) {
                 (KeyCode::Char('g'), KeyModifiers::NONE) => {
@@ -780,7 +773,8 @@ impl Editor {
                             let view = &self.views[self.current_view_idx];
                             let loc = view.text_location();
                             if view.is_word_end(loc) || view.is_punc_end(loc) {
-                                self.views[self.current_view_idx].handle_move_command(Move::Right(1));
+                                self.views[self.current_view_idx]
+                                    .handle_move_command(Move::Right(1));
                             }
                             self.views[self.current_view_idx].start_selection();
                         }
@@ -794,7 +788,8 @@ impl Editor {
                             let view = &self.views[self.current_view_idx];
                             let loc = view.text_location();
                             if view.is_word_start(loc) || view.is_punc_start(loc) {
-                                self.views[self.current_view_idx].handle_move_command(Move::Left(1));
+                                self.views[self.current_view_idx]
+                                    .handle_move_command(Move::Left(1));
                             }
                             self.views[self.current_view_idx].start_selection();
                         }
@@ -808,7 +803,8 @@ impl Editor {
                             let view = &self.views[self.current_view_idx];
                             let loc = view.text_location();
                             if view.is_word_end(loc) || view.is_punc_end(loc) {
-                                self.views[self.current_view_idx].handle_move_command(Move::Right(1));
+                                self.views[self.current_view_idx]
+                                    .handle_move_command(Move::Right(1));
                             }
                             self.views[self.current_view_idx].start_selection();
                         }
@@ -1007,13 +1003,11 @@ impl Editor {
                         if let Some(text) = text {
                             if let Err(e) = self.system_clipboard.set_text(text) {
                                 self.message_bar.error(&format!("Clipboard error: {e}"));
+                            } else if self.views[self.current_view_idx].get_selection().is_some() {
+                                self.message_bar.info("Text copied to system clipboard.");
                             } else {
-                                if self.views[self.current_view_idx].get_selection().is_some() {
-                                    self.message_bar.info("Text copied to system clipboard.");
-                                } else {
-                                    self.message_bar
-                                        .info("Character copied to system clipboard.");
-                                }
+                                self.message_bar
+                                    .info("Character copied to system clipboard.");
                             }
                         }
                         if self.mode == EditorMode::Visual {
@@ -1267,7 +1261,7 @@ impl Editor {
 
     fn handle_vim_command(&mut self, command: &str) {
         let parts: Vec<&str> = command.split_whitespace().collect();
-        let cmd = parts.get(0).copied().unwrap_or("");
+        let cmd = parts.first().copied().unwrap_or("");
         let arg = parts.get(1).copied();
 
         match cmd {
@@ -1377,8 +1371,7 @@ impl Editor {
                 }
 
                 self.message_bar.info(&format!(
-                    "Reloaded {} files, {} already up to date, {} errors",
-                    reloaded_count, up_to_date_count, error_count
+                    "Reloaded {reloaded_count} files, {up_to_date_count} already up to date, {error_count} errors"
                 ));
             }
             _ => self.message_bar.error(&format!("Unknown command: {cmd}")),
@@ -1623,7 +1616,7 @@ impl Editor {
                     index = Some(0);
                 } else {
                     let lcp = longest_common_prefix(
-                        &matches.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
+                        &matches.iter().map(std::string::String::as_str).collect::<Vec<_>>(),
                     );
                     let prefix_len = if current_value.split_whitespace().count() <= 1
                         && !current_value.ends_with(' ')
@@ -1659,7 +1652,7 @@ impl Editor {
                 } else {
                     (i + 1) % matches.len()
                 };
-                let new_val = if original.as_ref().map_or(false, |o| !o.contains(' ')) {
+                let new_val = if original.as_ref().is_some_and(|o| !o.contains(' ')) {
                     matches[new_index].clone()
                 } else {
                     let cmd = original
@@ -1688,21 +1681,19 @@ impl Editor {
 
         if let Ok(entries) = std::fs::read_dir(dir) {
             for entry in entries.flatten() {
-                if let Ok(name) = entry.file_name().into_string() {
-                    if name.starts_with(file_prefix) {
+                if let Ok(name) = entry.file_name().into_string()
+                    && name.starts_with(file_prefix) {
                         let mut full_path = if dir == "." {
                             name
                         } else {
                             format!("{dir}{name}")
                         };
-                        if let Ok(metadata) = entry.metadata() {
-                            if metadata.is_dir() {
+                        if let Ok(metadata) = entry.metadata()
+                            && metadata.is_dir() {
                                 full_path.push('/');
                             }
-                        }
                         matches.push(full_path);
                     }
-                }
             }
         }
         matches

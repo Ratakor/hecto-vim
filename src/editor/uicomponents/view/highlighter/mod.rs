@@ -1,11 +1,11 @@
 use super::super::super::{Annotation, AnnotationType, FileType, Line};
 use crate::prelude::*;
+mod diagnostichighlighter;
 mod selectionhighlighter;
 mod syntaxhighlighter;
-mod diagnostichighlighter;
+use diagnostichighlighter::DiagnosticHighlighter;
 use searchresulthighlighter::SearchResultHighlighter;
 use selectionhighlighter::SelectionHighlighter;
-use diagnostichighlighter::DiagnosticHighlighter;
 pub use syntaxhighlighter::SyntaxHighlighter;
 mod searchresulthighlighter;
 mod treesitterhighlighter;
@@ -40,8 +40,7 @@ impl<'a> Highlighter<'a> {
             .map(|matched_word| SearchResultHighlighter::new(matched_word, selected_match));
         let selection_highlighter =
             selection.map(|(start, end)| SelectionHighlighter::new(start, end));
-        let diagnostic_highlighter =
-            diagnostics.map(DiagnosticHighlighter::new);
+        let diagnostic_highlighter = diagnostics.map(DiagnosticHighlighter::new);
         Self {
             syntax_highlighter,
             search_result_highlighter,
@@ -52,26 +51,22 @@ impl<'a> Highlighter<'a> {
     pub fn get_annotations(&self, idx: LineIdx, line: &Line) -> Vec<Annotation> {
         let mut result = Vec::new();
 
-        if let Some(syntax_highlighter) = &self.syntax_highlighter {
-            if let Some(annotations) = syntax_highlighter.get_annotations(idx) {
+        if let Some(syntax_highlighter) = &self.syntax_highlighter
+            && let Some(annotations) = syntax_highlighter.get_annotations(idx) {
                 result.extend(annotations.iter().copied());
             }
-        }
-        if let Some(search_result_highlighter) = &self.search_result_highlighter {
-            if let Some(annotations) = search_result_highlighter.get_annotations(idx) {
+        if let Some(search_result_highlighter) = &self.search_result_highlighter
+            && let Some(annotations) = search_result_highlighter.get_annotations(idx) {
                 result.extend(annotations.iter().copied());
             }
-        }
-        if let Some(selection_highlighter) = &self.selection_highlighter {
-            if let Some(annotations) = selection_highlighter.get_annotations(idx, line) {
+        if let Some(selection_highlighter) = &self.selection_highlighter
+            && let Some(annotations) = selection_highlighter.get_annotations(idx, line) {
                 result.extend(annotations.iter().copied());
             }
-        }
-        if let Some(diagnostic_highlighter) = &self.diagnostic_highlighter {
-            if let Some(annotations) = diagnostic_highlighter.get_annotations(idx, line) {
+        if let Some(diagnostic_highlighter) = &self.diagnostic_highlighter
+            && let Some(annotations) = diagnostic_highlighter.get_annotations(idx, line) {
                 result.extend(annotations.iter().copied());
             }
-        }
         result
     }
     pub fn highlight(&mut self, idx: LineIdx, line: &Line) {

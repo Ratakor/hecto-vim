@@ -1,9 +1,9 @@
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::process::{Child, Command, Stdio};
-use std::sync::mpsc::{channel, Receiver};
+use std::sync::mpsc::{Receiver, channel};
 use std::thread;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -76,29 +76,28 @@ impl LspClient {
                 }
 
                 if line.starts_with("Content-Length: ") {
-                    let length: usize = line["Content-Length: ".len()..]
-                        .trim()
-                        .parse()
-                        .unwrap_or(0);
+                    let length: usize =
+                        line["Content-Length: ".len()..].trim().parse().unwrap_or(0);
 
                     // Read the empty line after headers
                     line.clear();
                     let _ = reader.read_line(&mut line);
 
                     let mut body = vec![0; length];
-                    if reader.read_exact(&mut body).is_ok() {
-                        if let Ok(value) = serde_json::from_slice::<Value>(&body) {
+                    if reader.read_exact(&mut body).is_ok()
+                        && let Ok(value) = serde_json::from_slice::<Value>(&body) {
                             if value.get("id").is_some() {
-                                if let Ok(response) = serde_json::from_value::<JsonRpcResponse>(value) {
+                                if let Ok(response) =
+                                    serde_json::from_value::<JsonRpcResponse>(value)
+                                {
                                     let _ = tx.send(LspMessage::Response(response));
                                 }
-                            } else {
-                                if let Ok(notification) = serde_json::from_value::<JsonRpcNotification>(value) {
-                                    let _ = tx.send(LspMessage::Notification(notification));
-                                }
+                            } else if let Ok(notification) =
+                                serde_json::from_value::<JsonRpcNotification>(value)
+                            {
+                                let _ = tx.send(LspMessage::Notification(notification));
                             }
                         }
-                    }
                 }
             }
         });
@@ -135,13 +134,12 @@ impl LspClient {
     }
 
     fn send_json<T: Serialize>(&mut self, value: &T) {
-        if let Ok(json) = serde_json::to_string(value) {
-            if let Some(mut stdin) = self.child.stdin.as_ref() {
+        if let Ok(json) = serde_json::to_string(value)
+            && let Some(mut stdin) = self.child.stdin.as_ref() {
                 let payload = format!("Content-Length: {}\r\n\r\n{}", json.len(), json);
                 let _ = stdin.write_all(payload.as_bytes());
                 let _ = stdin.flush();
             }
-        }
     }
 }
 
@@ -157,7 +155,7 @@ impl LspManager {
     }
 
     pub fn get_client(&mut self, file_type: crate::editor::FileType) -> Option<&mut LspClient> {
-        if !self.clients.contains_key(&file_type) {
+        if let std::collections::hash_map::Entry::Vacant(e) = self.clients.entry(file_type) {
             let (cmd, args) = file_type.lsp_server()?;
 
             if let Some((mut client, rx)) = LspClient::new(cmd, &args) {
@@ -169,8 +167,8 @@ impl LspManager {
                 });
                 client.send_request("initialize", params);
                 client.send_notification("initialized", json!({}));
-                
-                self.clients.insert(file_type, (client, rx));
+
+                e.insert((client, rx));
             } else {
                 return None;
             }

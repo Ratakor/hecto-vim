@@ -64,7 +64,7 @@ impl ContextMenu {
             .map(|(action, label)| {
                 (
                     action,
-                    format!(" {:<width$} ", label, width = max_label_width),
+                    format!(" {label:<max_label_width$} "),
                 )
             })
             .collect();

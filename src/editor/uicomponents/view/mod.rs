@@ -1,5 +1,4 @@
 use arboard::Clipboard;
-use std::ops::Deref;
 use std::{cmp::min, io::Error};
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -91,11 +90,10 @@ impl View {
     }
 
     pub fn get_uri(&self) -> String {
-        if let Some(path) = self.buffer.get_file_info().get_path() {
-            if let Ok(abs_path) = std::fs::canonicalize(path) {
+        if let Some(path) = self.buffer.get_file_info().get_path()
+            && let Ok(abs_path) = std::fs::canonicalize(path) {
                 return format!("file://{}", abs_path.display());
             }
-        }
         String::new()
     }
 
@@ -132,7 +130,7 @@ impl View {
             self.set_needs_redraw(true);
             Ok(true)
         } else {
-            Err(Error::new(std::io::ErrorKind::Other, "No file path"))
+            Err(Error::other("No file path"))
         }
     }
 
@@ -382,11 +380,10 @@ impl View {
         self.set_needs_redraw(true);
     }
     pub fn exit_search(&mut self) {
-        if let Some(search_info) = &self.search_info {
-            if let Some(query) = &search_info.query {
+        if let Some(search_info) = &self.search_info
+            && let Some(query) = &search_info.query {
                 self.last_search_query = Some(query.clone());
             }
-        }
         self.search_info = None;
         self.set_needs_redraw(true);
     }
@@ -605,8 +602,8 @@ impl View {
     // region: Text editing
     fn insert_newline(&mut self) {
         let mut is_between_braces = false;
-        if let Some(line) = self.buffer.get_line(self.text_location.line_idx) {
-            if self.text_location.grapheme_idx > 0
+        if let Some(line) = self.buffer.get_line(self.text_location.line_idx)
+            && self.text_location.grapheme_idx > 0
                 && self.text_location.grapheme_idx < line.grapheme_count()
             {
                 let char_before = line.get_substring(
@@ -622,7 +619,6 @@ impl View {
                     is_between_braces = true;
                 }
             }
-        }
 
         if is_between_braces {
             let mut base_indent = String::new();
@@ -1187,7 +1183,7 @@ impl UIComponent for View {
         let end_y = origin_row.saturating_add(height);
         let scroll_top = self.scroll_offset.row;
         let query = self.get_search_query().cloned();
-        let query_deref = query.as_ref().map(|line| line.deref());
+        let query_deref = query.as_deref();
         let selected_match = query.is_some().then_some(self.text_location);
         let selection = self
             .selection_start
