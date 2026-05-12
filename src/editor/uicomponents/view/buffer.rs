@@ -277,9 +277,10 @@ impl Buffer {
     pub fn replace_char(&mut self, character: char, at: Location) {
         self.push_undo(at);
         if let Some(line) = self.lines.get_mut(at.line_idx)
-            && at.grapheme_idx < line.grapheme_count() {
-                line.replace_char(character, at.grapheme_idx);
-            }
+            && at.grapheme_idx < line.grapheme_count()
+        {
+            line.replace_char(character, at.grapheme_idx);
+        }
     }
     fn insert_char_no_undo(&mut self, character: char, at: Location) {
         debug_assert!(at.line_idx <= self.height());
@@ -320,15 +321,16 @@ impl Buffer {
             String::new()
         };
         if let Some(line) = self.lines.get(at.line_idx)
-            && at.grapheme_idx > 0 {
-                let char_before =
-                    line.get_substring(at.grapheme_idx.saturating_sub(1)..at.grapheme_idx);
-                if char_before == "{" || char_before == "[" || char_before == "(" {
-                    for _ in 0..self.indent_size() {
-                        indent_string.push(' ');
-                    }
+            && at.grapheme_idx > 0
+        {
+            let char_before =
+                line.get_substring(at.grapheme_idx.saturating_sub(1)..at.grapheme_idx);
+            if char_before == "{" || char_before == "[" || char_before == "(" {
+                for _ in 0..self.indent_size() {
+                    indent_string.push(' ');
                 }
             }
+        }
         self.insert_newline_no_undo(at);
         let mut current_at = at;
         current_at.line_idx = current_at.line_idx.saturating_add(1);

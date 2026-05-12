@@ -95,9 +95,11 @@ impl Line {
             _ => {
                 let mut chars = for_str.chars();
                 if let Some(ch) = chars.next()
-                    && ch.is_control() && chars.next().is_none() {
-                        return Some(("▯".to_string(), Vec::new(), 1));
-                    }
+                    && ch.is_control()
+                    && chars.next().is_none()
+                {
+                    return Some(("▯".to_string(), Vec::new(), 1));
+                }
                 None
             }
         }
@@ -178,15 +180,17 @@ impl Line {
             }
 
             // Fragment is fully within range: Apply replacement characters if appropriate
-            if fragment_start >= range.start && fragment_end <= range.end
-                && let Some(replacement) = &fragment.replacement {
-                    let start = fragment.start;
-                    let end = start.saturating_add(fragment.grapheme.len());
-                    result.replace(start, end, replacement);
-                    for (annotation_type, a_start, a_end) in &fragment.replacement_annotations {
-                        result.add_annotation(*annotation_type, start + a_start, start + a_end);
-                    }
+            if fragment_start >= range.start
+                && fragment_end <= range.end
+                && let Some(replacement) = &fragment.replacement
+            {
+                let start = fragment.start;
+                let end = start.saturating_add(fragment.grapheme.len());
+                result.replace(start, end, replacement);
+                for (annotation_type, a_start, a_end) in &fragment.replacement_annotations {
+                    result.add_annotation(*annotation_type, start + a_start, start + a_end);
                 }
+            }
         }
 
         result

@@ -89,19 +89,18 @@ impl LspClient {
 
                     let mut body = vec![0; length];
                     if reader.read_exact(&mut body).is_ok()
-                        && let Ok(value) = serde_json::from_slice::<Value>(&body) {
-                            if value.get("id").is_some() {
-                                if let Ok(response) =
-                                    serde_json::from_value::<JsonRpcResponse>(value)
-                                {
-                                    let _ = tx.send(LspMessage::Response(response));
-                                }
-                            } else if let Ok(notification) =
-                                serde_json::from_value::<JsonRpcNotification>(value)
-                            {
-                                let _ = tx.send(LspMessage::Notification(notification));
+                        && let Ok(value) = serde_json::from_slice::<Value>(&body)
+                    {
+                        if value.get("id").is_some() {
+                            if let Ok(response) = serde_json::from_value::<JsonRpcResponse>(value) {
+                                let _ = tx.send(LspMessage::Response(response));
                             }
+                        } else if let Ok(notification) =
+                            serde_json::from_value::<JsonRpcNotification>(value)
+                        {
+                            let _ = tx.send(LspMessage::Notification(notification));
                         }
+                    }
                 }
             }
         });
@@ -139,11 +138,12 @@ impl LspClient {
 
     fn send_json<T: Serialize>(&mut self, value: &T) {
         if let Ok(json) = serde_json::to_string(value)
-            && let Some(mut stdin) = self.child.stdin.as_ref() {
-                let payload = format!("Content-Length: {}\r\n\r\n{}", json.len(), json);
-                let _ = stdin.write_all(payload.as_bytes());
-                let _ = stdin.flush();
-            }
+            && let Some(mut stdin) = self.child.stdin.as_ref()
+        {
+            let payload = format!("Content-Length: {}\r\n\r\n{}", json.len(), json);
+            let _ = stdin.write_all(payload.as_bytes());
+            let _ = stdin.flush();
+        }
     }
 }
 

@@ -93,14 +93,19 @@ impl View {
 
     pub fn get_uri(&self) -> String {
         if let Some(path) = self.buffer.get_file_info().get_path()
-            && let Ok(abs_path) = std::fs::canonicalize(path) {
-                // lsp-types uses url::Url which might not be directly in lsp_types root depending on version/features
-                // But PublishDiagnosticsParams.uri is a Url.
-                // Let's use the format! as a fallback if Url is hard to get, but make it robust.
-                let path_str = abs_path.display().to_string();
-                let prefix = if path_str.starts_with('/') { "file://" } else { "file:///" };
-                return format!("{}{}", prefix, path_str);
-            }
+            && let Ok(abs_path) = std::fs::canonicalize(path)
+        {
+            // lsp-types uses url::Url which might not be directly in lsp_types root depending on version/features
+            // But PublishDiagnosticsParams.uri is a Url.
+            // Let's use the format! as a fallback if Url is hard to get, but make it robust.
+            let path_str = abs_path.display().to_string();
+            let prefix = if path_str.starts_with('/') {
+                "file://"
+            } else {
+                "file:///"
+            };
+            return format!("{}{}", prefix, path_str);
+        }
         String::new()
     }
 
@@ -396,9 +401,10 @@ impl View {
     }
     pub fn exit_search(&mut self) {
         if let Some(search_info) = &self.search_info
-            && let Some(query) = &search_info.query {
-                self.last_search_query = Some(query.clone());
-            }
+            && let Some(query) = &search_info.query
+        {
+            self.last_search_query = Some(query.clone());
+        }
         self.search_info = None;
         self.set_needs_redraw(true);
     }
@@ -619,21 +625,21 @@ impl View {
         let mut is_between_braces = false;
         if let Some(line) = self.buffer.get_line(self.text_location.line_idx)
             && self.text_location.grapheme_idx > 0
-                && self.text_location.grapheme_idx < line.grapheme_count()
+            && self.text_location.grapheme_idx < line.grapheme_count()
+        {
+            let char_before = line.get_substring(
+                self.text_location.grapheme_idx - 1..self.text_location.grapheme_idx,
+            );
+            let char_after = line.get_substring(
+                self.text_location.grapheme_idx..self.text_location.grapheme_idx + 1,
+            );
+            if (char_before == "{" && char_after == "}")
+                || (char_before == "[" && char_after == "]")
+                || (char_before == "(" && char_after == ")")
             {
-                let char_before = line.get_substring(
-                    self.text_location.grapheme_idx - 1..self.text_location.grapheme_idx,
-                );
-                let char_after = line.get_substring(
-                    self.text_location.grapheme_idx..self.text_location.grapheme_idx + 1,
-                );
-                if (char_before == "{" && char_after == "}")
-                    || (char_before == "[" && char_after == "]")
-                    || (char_before == "(" && char_after == ")")
-                {
-                    is_between_braces = true;
-                }
+                is_between_braces = true;
             }
+        }
 
         if is_between_braces {
             let mut base_indent = String::new();

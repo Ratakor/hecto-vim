@@ -61,12 +61,7 @@ impl ContextMenu {
 
         let available_actions: Vec<(ContextMenuAction, String)> = raw_actions
             .into_iter()
-            .map(|(action, label)| {
-                (
-                    action,
-                    format!(" {label:<max_label_width$} "),
-                )
-            })
+            .map(|(action, label)| (action, format!(" {label:<max_label_width$} ")))
             .collect();
 
         let size = Size {

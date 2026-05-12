@@ -52,21 +52,25 @@ impl<'a> Highlighter<'a> {
         let mut result = Vec::new();
 
         if let Some(syntax_highlighter) = &self.syntax_highlighter
-            && let Some(annotations) = syntax_highlighter.get_annotations(idx) {
-                result.extend(annotations.iter().copied());
-            }
+            && let Some(annotations) = syntax_highlighter.get_annotations(idx)
+        {
+            result.extend(annotations.iter().copied());
+        }
         if let Some(search_result_highlighter) = &self.search_result_highlighter
-            && let Some(annotations) = search_result_highlighter.get_annotations(idx) {
-                result.extend(annotations.iter().copied());
-            }
+            && let Some(annotations) = search_result_highlighter.get_annotations(idx)
+        {
+            result.extend(annotations.iter().copied());
+        }
         if let Some(selection_highlighter) = &self.selection_highlighter
-            && let Some(annotations) = selection_highlighter.get_annotations(idx, line) {
-                result.extend(annotations.iter().copied());
-            }
+            && let Some(annotations) = selection_highlighter.get_annotations(idx, line)
+        {
+            result.extend(annotations.iter().copied());
+        }
         if let Some(diagnostic_highlighter) = &self.diagnostic_highlighter
-            && let Some(annotations) = diagnostic_highlighter.get_annotations(idx, line) {
-                result.extend(annotations.iter().copied());
-            }
+            && let Some(annotations) = diagnostic_highlighter.get_annotations(idx, line)
+        {
+            result.extend(annotations.iter().copied());
+        }
         result
     }
     pub fn highlight(&mut self, idx: LineIdx, line: &Line) {

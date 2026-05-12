@@ -188,8 +188,7 @@ impl Editor {
 
         let size = Terminal::size().unwrap_or_default();
         let (tx, rx) = mpsc_channel();
-        let watcher = RecommendedWatcher::new(tx, Config::default())
-            .map_err(Error::other)?;
+        let watcher = RecommendedWatcher::new(tx, Config::default()).map_err(Error::other)?;
 
         let mut editor = Self {
             should_quit: false,
@@ -213,8 +212,7 @@ impl Editor {
             quit_times: 0,
             move_left_on_escape: false,
             clipboard: String::new(),
-            system_clipboard: Clipboard::new()
-                .map_err(Error::other)?,
+            system_clipboard: Clipboard::new().map_err(Error::other)?,
             command_buffer: Vec::new(),
             count: None,
             context_menu: None,
@@ -284,11 +282,13 @@ impl Editor {
             }
 
             // Wait for the next event if none were pending
-            if !event_processed && poll(Duration::from_millis(100)).unwrap_or(false)
-                && let Ok(event) = read() {
-                    self.evaluate_event(event);
-                    event_processed = true;
-                }
+            if !event_processed
+                && poll(Duration::from_millis(100)).unwrap_or(false)
+                && let Ok(event) = read()
+            {
+                self.evaluate_event(event);
+                event_processed = true;
+            }
 
             if self.handle_file_events() {
                 event_processed = true;
@@ -321,10 +321,8 @@ impl Editor {
                                     status.file_name
                                 ));
                             } else if view.reload().unwrap_or(false) {
-                                self.message_bar.info(&format!(
-                                    "File {} reloaded from disk",
-                                    status.file_name
-                                ));
+                                self.message_bar
+                                    .info(&format!("File {} reloaded from disk", status.file_name));
                                 handled = true;
                             }
                         }
@@ -337,11 +335,12 @@ impl Editor {
 
     fn watch_view(&mut self, view_idx: usize) -> Result<(), Error> {
         if let Some(path) = self.views[view_idx].get_path()
-            && let Ok(abs_path) = std::fs::canonicalize(path) {
-                self.file_watcher
-                    .watch(&abs_path, RecursiveMode::NonRecursive)
-                    .map_err(Error::other)?;
-            }
+            && let Ok(abs_path) = std::fs::canonicalize(path)
+        {
+            self.file_watcher
+                .watch(&abs_path, RecursiveMode::NonRecursive)
+                .map_err(Error::other)?;
+        }
         Ok(())
     }
 
@@ -377,50 +376,48 @@ impl Editor {
     fn handle_lsp_response(&mut self, _file_type: FileType, response: lsp::JsonRpcResponse) {
         if let Some(id) = response.id
             && let Some((view_idx, req_type)) = self.pending_requests.remove(&id)
-                && let Some(result) = response.result {
-                    match req_type {
-                        LspRequestType::Hover => {
-                            if let Ok(hover) = serde_json::from_value::<lsp_types::Hover>(result) {
-                                let text = extract_hover_text(hover.contents);
-                                if !text.is_empty() {
-                                    let pos = self.views[view_idx].caret_position();
-                                    self.info_popup =
-                                        Some(InfoPopup::new(pos, self.terminal_size, &text));
-                                }
-                            }
-                        }
-                        LspRequestType::Definition => {
-                            if let Ok(goto) =
-                                serde_json::from_value::<lsp_types::GotoDefinitionResponse>(result)
-                            {
-                                let target = match goto {
-                                    lsp_types::GotoDefinitionResponse::Scalar(loc) => Some(loc),
-                                    lsp_types::GotoDefinitionResponse::Array(vec) => {
-                                        vec.first().cloned()
-                                    }
-                                    lsp_types::GotoDefinitionResponse::Link(vec) => {
-                                        vec.first().map(|link| lsp_types::Location {
-                                            uri: link.target_uri.clone(),
-                                            range: link.target_range,
-                                        })
-                                    }
-                                };
-
-                                if let Some(loc) = target {
-                                    self.open_file_from_uri(loc.uri.as_str(), loc.range.start);
-                                }
-                            }
-                        }
-                        LspRequestType::Formatting => {
-                            if let Ok(Some(edits)) =
-                                serde_json::from_value::<Option<Vec<lsp_types::TextEdit>>>(result)
-                            {
-                                self.views[view_idx].apply_lsp_edits(edits);
-                                self.notify_lsp_did_change(view_idx);
-                            }
+            && let Some(result) = response.result
+        {
+            match req_type {
+                LspRequestType::Hover => {
+                    if let Ok(hover) = serde_json::from_value::<lsp_types::Hover>(result) {
+                        let text = extract_hover_text(hover.contents);
+                        if !text.is_empty() {
+                            let pos = self.views[view_idx].caret_position();
+                            self.info_popup = Some(InfoPopup::new(pos, self.terminal_size, &text));
                         }
                     }
                 }
+                LspRequestType::Definition => {
+                    if let Ok(goto) =
+                        serde_json::from_value::<lsp_types::GotoDefinitionResponse>(result)
+                    {
+                        let target = match goto {
+                            lsp_types::GotoDefinitionResponse::Scalar(loc) => Some(loc),
+                            lsp_types::GotoDefinitionResponse::Array(vec) => vec.first().cloned(),
+                            lsp_types::GotoDefinitionResponse::Link(vec) => {
+                                vec.first().map(|link| lsp_types::Location {
+                                    uri: link.target_uri.clone(),
+                                    range: link.target_range,
+                                })
+                            }
+                        };
+
+                        if let Some(loc) = target {
+                            self.open_file_from_uri(loc.uri.as_str(), loc.range.start);
+                        }
+                    }
+                }
+                LspRequestType::Formatting => {
+                    if let Ok(Some(edits)) =
+                        serde_json::from_value::<Option<Vec<lsp_types::TextEdit>>>(result)
+                    {
+                        self.views[view_idx].apply_lsp_edits(edits);
+                        self.notify_lsp_did_change(view_idx);
+                    }
+                }
+            }
+        }
     }
 
     fn open_file_from_uri(&mut self, uri: &str, pos: lsp_types::Position) {
@@ -598,10 +595,7 @@ impl Editor {
         if self.views.is_empty() {
             return;
         }
-        let mut command_buffer = self
-            .count
-            .map(|c| c.to_string())
-            .unwrap_or_default();
+        let mut command_buffer = self.count.map(|c| c.to_string()).unwrap_or_default();
         command_buffer.push_str(
             &self
                 .command_buffer
@@ -702,16 +696,17 @@ impl Editor {
 
         if self.command_buffer.len() == 1 {
             if let (KeyCode::Char(c), KeyModifiers::NONE) = (first_code, first_mod)
-                && c.is_ascii_digit() {
-                    let digit = c.to_digit(10).unwrap_or(0) as usize;
-                    self.count = Some(
-                        self.count
-                            .unwrap_or(0)
-                            .saturating_mul(10)
-                            .saturating_add(digit),
-                    );
-                    return true;
-                }
+                && c.is_ascii_digit()
+            {
+                let digit = c.to_digit(10).unwrap_or(0) as usize;
+                self.count = Some(
+                    self.count
+                        .unwrap_or(0)
+                        .saturating_mul(10)
+                        .saturating_add(digit),
+                );
+                return true;
+            }
 
             match (first_code, first_mod) {
                 (KeyCode::Char('g'), KeyModifiers::NONE) => {
@@ -1617,7 +1612,10 @@ impl Editor {
                     index = Some(0);
                 } else {
                     let lcp = longest_common_prefix(
-                        &matches.iter().map(std::string::String::as_str).collect::<Vec<_>>(),
+                        &matches
+                            .iter()
+                            .map(std::string::String::as_str)
+                            .collect::<Vec<_>>(),
                     );
                     let prefix_len = if current_value.split_whitespace().count() <= 1
                         && !current_value.ends_with(' ')
@@ -1683,18 +1681,20 @@ impl Editor {
         if let Ok(entries) = std::fs::read_dir(dir) {
             for entry in entries.flatten() {
                 if let Ok(name) = entry.file_name().into_string()
-                    && name.starts_with(file_prefix) {
-                        let mut full_path = if dir == "." {
-                            name
-                        } else {
-                            format!("{dir}{name}")
-                        };
-                        if let Ok(metadata) = entry.metadata()
-                            && metadata.is_dir() {
-                                full_path.push('/');
-                            }
-                        matches.push(full_path);
+                    && name.starts_with(file_prefix)
+                {
+                    let mut full_path = if dir == "." {
+                        name
+                    } else {
+                        format!("{dir}{name}")
+                    };
+                    if let Ok(metadata) = entry.metadata()
+                        && metadata.is_dir()
+                    {
+                        full_path.push('/');
                     }
+                    matches.push(full_path);
+                }
             }
         }
         matches

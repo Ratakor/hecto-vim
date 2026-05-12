@@ -34,13 +34,14 @@ impl InfoPopup {
             }
         }
 
-        let width = lines.iter().map(std::string::String::len).max().unwrap_or(0);
+        let width = lines
+            .iter()
+            .map(std::string::String::len)
+            .max()
+            .unwrap_or(0);
         let height = lines.len();
 
-        let padded_lines: Vec<String> = lines
-            .into_iter()
-            .map(|l| format!("{l:<width$}"))
-            .collect();
+        let padded_lines: Vec<String> = lines.into_iter().map(|l| format!("{l:<width$}")).collect();
 
         let size = Size { height, width };
 
