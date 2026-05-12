@@ -31,6 +31,7 @@ pub struct View {
     syntax_highlighter: Option<Box<dyn SyntaxHighlighter>>,
     syntax_enabled: bool,
     diagnostics: Vec<lsp_types::Diagnostic>,
+    lsp_version: i32,
 }
 
 impl Default for View {
@@ -47,6 +48,7 @@ impl Default for View {
             syntax_highlighter: None,
             syntax_enabled: false,
             diagnostics: Vec::new(),
+            lsp_version: 1,
         }
     }
 }
@@ -92,7 +94,12 @@ impl View {
     pub fn get_uri(&self) -> String {
         if let Some(path) = self.buffer.get_file_info().get_path()
             && let Ok(abs_path) = std::fs::canonicalize(path) {
-                return format!("file://{}", abs_path.display());
+                // lsp-types uses url::Url which might not be directly in lsp_types root depending on version/features
+                // But PublishDiagnosticsParams.uri is a Url.
+                // Let's use the format! as a fallback if Url is hard to get, but make it robust.
+                let path_str = abs_path.display().to_string();
+                let prefix = if path_str.starts_with('/') { "file://" } else { "file:///" };
+                return format!("{}{}", prefix, path_str);
             }
         String::new()
     }
@@ -106,6 +113,14 @@ impl View {
             line: self.text_location.line_idx as u32,
             character: self.text_location.grapheme_idx as u32,
         }
+    }
+
+    pub fn get_lsp_version(&self) -> i32 {
+        self.lsp_version
+    }
+
+    pub fn increment_lsp_version(&mut self) {
+        self.lsp_version += 1;
     }
 
     pub fn update_diagnostics(&mut self, diagnostics: Vec<lsp_types::Diagnostic>) {

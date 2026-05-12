@@ -9,5 +9,6 @@ pkgs.mkShell {
     rustfmt
 
     nil
+    typescript-language-server
   ];
 }

@@ -471,7 +471,7 @@ impl Editor {
                 "textDocument": {
                     "uri": uri,
                     "languageId": file_type.language_id(),
-                    "version": 1,
+                    "version": view.get_lsp_version(),
                     "text": view.get_text()
                 }
             });
@@ -480,7 +480,8 @@ impl Editor {
     }
 
     fn notify_lsp_did_change(&mut self, view_idx: usize) {
-        let view = &self.views[view_idx];
+        let view = &mut self.views[view_idx];
+        view.increment_lsp_version();
         let file_type = view.get_status("").file_type;
         let uri = view.get_uri();
         if uri.is_empty() {
@@ -491,7 +492,7 @@ impl Editor {
             let params = json!({
                 "textDocument": {
                     "uri": uri,
-                    "version": 2 // Simplification: we should track version per view
+                    "version": view.get_lsp_version()
                 },
                 "contentChanges": [{
                     "text": view.get_text()

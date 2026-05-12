@@ -79,9 +79,13 @@ impl LspClient {
                     let length: usize =
                         line["Content-Length: ".len()..].trim().parse().unwrap_or(0);
 
-                    // Read the empty line after headers
-                    line.clear();
-                    let _ = reader.read_line(&mut line);
+                    // Read until the empty line after headers
+                    loop {
+                        line.clear();
+                        if reader.read_line(&mut line).is_err() || line.trim().is_empty() {
+                            break;
+                        }
+                    }
 
                     let mut body = vec![0; length];
                     if reader.read_exact(&mut body).is_ok()
@@ -163,7 +167,25 @@ impl LspManager {
                 let params = json!({
                     "processId": std::process::id(),
                     "rootUri": format!("file://{}", std::env::current_dir().unwrap_or_default().display()),
-                    "capabilities": {}
+                    "capabilities": {
+                        "textDocument": {
+                            "publishDiagnostics": {
+                                "relatedInformation": true,
+                                "versionSupport": false,
+                                "tagSupport": {
+                                    "valueSet": [1, 2]
+                                },
+                                "codeDescriptionSupport": true,
+                                "dataSupport": true
+                            },
+                            "hover": {
+                                "contentFormat": ["markdown", "plaintext"]
+                            },
+                            "definition": {
+                                "dynamicRegistration": true
+                            }
+                        }
+                    }
                 });
                 client.send_request("initialize", params);
                 client.send_notification("initialized", json!({}));
